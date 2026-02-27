@@ -63,6 +63,9 @@ uv run transcribe_whisperx.py clean.wav -l ru -m large-v3 --no-diarize -o result
 # Benchmark pipeline stages (time + RSS memory per stage)
 uv run benchmark.py clean.wav --stages transcribe align
 
+# Compare wav2vec2 alignment models (default 300M vs 1B)
+uv run compare_align.py clean.wav
+
 # Test Ollama LLM connectivity and Russian summarization
 uv run test_ollama.py
 uv run test_ollama.py --list-models
@@ -98,7 +101,7 @@ uv run test_ollama.py -m qwen2.5:14b
 
 ## Current Phase & Roadmap
 
-**Phase 1 (Foundation)** — in progress. Existing scripts: `preprocess.py`, `transcribe_whisperx.py`, `benchmark.py`, `test_ollama.py`.
+**Phase 1 (Foundation)** — in progress. Existing scripts: `preprocess.py`, `transcribe_whisperx.py`, `benchmark.py`, `test_ollama.py`, `compare_align.py`.
 
 Planned phases:
 - **Phase 2**: Tune diarization on real Russian multi-speaker meetings
