@@ -186,12 +186,16 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
     return result, audio
 
 
-def align(result: dict[str, Any], audio: Any, language: str) -> dict[str, Any]:
+def align(result: dict[str, Any], audio: Any, language: str, align_model: str | None = None) -> dict[str, Any]:
     import whisperx
 
-    print("[2/3] Aligning word timestamps...", file=sys.stderr)
+    label = align_model.split("/")[-1] if align_model else "default"
+    print(f"[2/3] Aligning word timestamps ({label})...", file=sys.stderr)
     t = time.time()
-    model_a, metadata = whisperx.load_align_model(language_code=language, device="cpu")
+    align_kwargs: dict[str, Any] = {"language_code": language, "device": "cpu"}
+    if align_model:
+        align_kwargs["model_name"] = align_model
+    model_a, metadata = whisperx.load_align_model(**align_kwargs)
     result = whisperx.align(
         result["segments"], model_a, metadata, audio,
         device="cpu", return_char_alignments=False,
@@ -259,6 +263,11 @@ def main() -> None:
     parser.add_argument("--min-speakers", type=int, default=2)
     parser.add_argument("--max-speakers", type=int, default=6)
     parser.add_argument("--no-align", action="store_true")
+    parser.add_argument(
+        "--align-model",
+        help="Alignment model HF repo (default: whisperx built-in for language). "
+        "E.g. jonatasgrosman/wav2vec2-xls-r-1b-russian",
+    )
     parser.add_argument("--no-diarize", action="store_true")
     parser.add_argument("-o", "--output")
     parser.add_argument(
@@ -294,7 +303,7 @@ def main() -> None:
     effective_language: str = result.get("language") or args.language
 
     if not args.no_align:
-        result = align(result, audio, effective_language)
+        result = align(result, audio, effective_language, args.align_model)
 
     if not skip_diarize:
         result = diarize(result, audio, hf_token, args.min_speakers, args.max_speakers)
