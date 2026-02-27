@@ -153,3 +153,4 @@ cython_debug/
 
 # macOS
 .DS_Store
+test_data/*.wav
