@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Tools cache
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Claude
+.claude/
+
+# OS
+.DS_Store
