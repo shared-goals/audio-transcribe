@@ -10,12 +10,19 @@ Usage:
 
 import argparse
 import gc
+import logging
 import os
 import resource
 import sys
 import time
+import warnings
 from pathlib import Path
 from typing import Any
+
+# Suppress third-party noise that doesn't affect pipeline functionality
+warnings.filterwarnings("ignore", message="torchcodec is not installed correctly", category=UserWarning)
+warnings.filterwarnings("ignore", message="Lightning automatically upgraded", category=UserWarning)
+logging.getLogger("whisperx").setLevel(logging.WARNING)
 
 
 def rss_mb() -> float:
