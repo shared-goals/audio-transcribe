@@ -54,13 +54,18 @@ def bench_transcribe(audio_path: str, model_size: str, language: str) -> tuple[d
     }
 
 
-def bench_align(result: dict[str, Any], audio: Any, language: str) -> tuple[dict[str, Any], dict[str, Any]]:
+def bench_align(
+    result: dict[str, Any], audio: Any, language: str, align_model: str | None = None
+) -> tuple[dict[str, Any], dict[str, Any]]:
     import whisperx
 
     gc.collect()
     before = rss_mb()
     t0 = time.time()
-    model_a, metadata = whisperx.load_align_model(language_code=language, device="cpu")
+    align_kwargs: dict[str, Any] = {"language_code": language, "device": "cpu"}
+    if align_model:
+        align_kwargs["model_name"] = align_model
+    model_a, metadata = whisperx.load_align_model(**align_kwargs)
     result = whisperx.align(
         result["segments"], model_a, metadata, audio,
         device="cpu", return_char_alignments=False,
@@ -70,8 +75,9 @@ def bench_align(result: dict[str, Any], audio: Any, language: str) -> tuple[dict
     del model_a
     gc.collect()
 
+    align_label = f"align ({align_model.split('/')[-1]})" if align_model else "align (default)"
     return result, {
-        "stage": "align",
+        "stage": align_label,
         "time_s": round(elapsed, 2),
         "peak_rss_mb": round(after, 0),
         "delta_rss_mb": round(after - before, 0),
@@ -87,7 +93,7 @@ def bench_diarize(
     gc.collect()
     before = rss_mb()
     t0 = time.time()
-    diarize_model = DiarizationPipeline(use_auth_token=hf_token, device="cpu")
+    diarize_model = DiarizationPipeline(model_name="pyannote/speaker-diarization-3.1", token=hf_token, device="cpu")
     diarize_segments = diarize_model(audio, min_speakers=min_speakers, max_speakers=max_speakers)
     result = whisperx.assign_word_speakers(diarize_segments, result)
     elapsed = time.time() - t0
@@ -105,12 +111,15 @@ def bench_diarize(
 
 def print_results(stats: list[dict[str, Any]], audio_duration_s: float | None) -> None:
     print("\n## Benchmark Results\n")
-    print("| Stage        | Time (s) | Peak RSS (MB) | Delta RSS (MB) |")
-    print("|--------------|----------|---------------|----------------|")
+    col = max(12, max((len(s["stage"]) for s in stats), default=12))
+    header = f"| {'Stage':<{col}} | Time (s) | Peak RSS (MB) | Delta RSS (MB) |"
+    sep = f"|{'-' * (col + 2)}|----------|---------------|----------------|"
+    print(header)
+    print(sep)
     for s in stats:
-        print(f"| {s['stage']:<12} | {s['time_s']:>8.2f} | {s['peak_rss_mb']:>13.0f} | {s['delta_rss_mb']:>14.0f} |")
+        print(f"| {s['stage']:<{col}} | {s['time_s']:>8.2f} | {s['peak_rss_mb']:>13.0f} | {s['delta_rss_mb']:>14.0f} |")
     total = sum(s["time_s"] for s in stats)
-    print(f"| {'**Total**':<12} | {total:>8.2f} | {'':>13} | {'':>14} |")
+    print(f"| {'**Total**':<{col}} | {total:>8.2f} | {'':>13} | {'':>14} |")
     if audio_duration_s:
         ratio = total / audio_duration_s
         print(f"\nAudio:      {audio_duration_s:.0f}s ({audio_duration_s / 60:.1f} min)")
@@ -124,6 +133,11 @@ def main() -> None:
     parser.add_argument("-m", "--model", default="large-v3")
     parser.add_argument("--min-speakers", type=int, default=2)
     parser.add_argument("--max-speakers", type=int, default=6)
+    parser.add_argument(
+        "--align-model",
+        help="Alignment model HF repo (default: whisperx built-in for language). "
+        "E.g. jonatasgrosman/wav2vec2-xls-r-1b-russian",
+    )
     parser.add_argument(
         "--stages", nargs="+",
         choices=["transcribe", "align", "diarize"],
@@ -159,7 +173,7 @@ def main() -> None:
         print(f"transcribe: {stats['time_s']}s  peak={stats['peak_rss_mb']}MB", file=sys.stderr)
 
     if "align" in args.stages and result is not None:
-        result, stats = bench_align(result, loaded_audio, args.language)
+        result, stats = bench_align(result, loaded_audio, args.language, args.align_model)
         all_stats.append(stats)
         print(f"align:      {stats['time_s']}s  peak={stats['peak_rss_mb']}MB", file=sys.stderr)
 
