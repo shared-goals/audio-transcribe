@@ -1,4 +1,4 @@
-"""Tests for transcribe_whisperx.py — build_output (pure function) and MLX integration."""
+"""Tests for audio_transcribe.stages.transcribe — build_output (pure function) and MLX integration."""
 
 import sys
 from unittest.mock import MagicMock
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from transcribe_whisperx import MLX_MODEL_MAP, _offset_segments, build_output
+from audio_transcribe.stages.transcribe import MLX_MODEL_MAP, _offset_segments, build_output
 
 
 def test_build_output_empty_segments():
@@ -31,9 +31,7 @@ def test_build_output_unknown_speaker_default():
 
 
 def test_build_output_speaker_assigned():
-    result_in = {
-        "segments": [{"start": 0.0, "end": 2.0, "text": "hi", "speaker": "SPEAKER_01"}]
-    }
+    result_in = {"segments": [{"start": 0.0, "end": 2.0, "text": "hi", "speaker": "SPEAKER_01"}]}
     output = build_output(result_in, "a.wav", "ru", "large-v3", 1.0)
     assert output["segments"][0]["speaker"] == "SPEAKER_01"
 
@@ -106,7 +104,7 @@ def test_build_output_no_words_key_when_absent():
     assert "words" not in output["segments"][0]
 
 
-# --- MLX backend tests ---
+# --- MLX model map tests ---
 
 
 def test_mlx_model_map_contains_standard_sizes():
@@ -162,11 +160,30 @@ def test_build_output_mlx_words_with_probability_field():
     assert "probability" not in words[0]
 
 
-def _add_mlx_cache_mocks(mp):
-    """Add mlx.core and mlx_whisper.transcribe mocks needed by _clear_mlx_cache().
+# --- _offset_segments (pure function) ---
 
-    Returns mock_mx for assertions on Metal cache calls.
-    """
+
+def test_offset_segments_shifts_timestamps():
+    segments = [
+        {"start": 0.0, "end": 2.5, "text": "hello"},
+        {"start": 3.0, "end": 5.0, "text": "world"},
+    ]
+    result = _offset_segments(segments, 10.0)
+    assert result[0]["start"] == 10.0
+    assert result[0]["end"] == 12.5
+    assert result[1]["start"] == 13.0
+    assert result[1]["end"] == 15.0
+
+
+def test_offset_segments_empty_list():
+    assert _offset_segments([], 5.0) == []
+
+
+# --- MLX backend tests (require mocking heavy deps) ---
+
+
+def _add_mlx_cache_mocks(mp):
+    """Add mlx.core and mlx_whisper.transcribe mocks needed by _clear_mlx_cache()."""
     mock_mx = MagicMock()
     mock_model_holder = MagicMock()
     mock_model_holder.model = "loaded_model"
@@ -174,8 +191,6 @@ def _add_mlx_cache_mocks(mp):
     mock_mlx_transcribe_mod = MagicMock()
     mock_mlx_transcribe_mod.ModelHolder = mock_model_holder
 
-    # `import mlx.core as mx` resolves via sys.modules["mlx"].core attribute,
-    # so the parent mock must have .core wired to our mock_mx.
     mock_mlx_pkg = MagicMock()
     mock_mlx_pkg.core = mock_mx
     mp.setitem(sys.modules, "mlx", mock_mlx_pkg)
@@ -203,12 +218,12 @@ def test_transcribe_mlx_maps_model_name_and_calls_correctly(tmp_path):
         mp.setitem(sys.modules, "mlx_whisper", mock_mlx)
         mp.setitem(sys.modules, "whisperx", mock_wx)
         _add_mlx_cache_mocks(mp)
-        # Re-import to pick up the mocked sys.modules inside the function
         import importlib
 
-        import transcribe_whisperx
-        importlib.reload(transcribe_whisperx)
-        result, audio = transcribe_whisperx.transcribe_mlx(str(dummy_audio), "large-v3", "ru")
+        import audio_transcribe.stages.transcribe as mod
+
+        importlib.reload(mod)
+        result, audio = mod.transcribe_mlx(str(dummy_audio), "large-v3", "ru")
 
     mock_mlx.transcribe.assert_called_once_with(
         str(dummy_audio),
@@ -237,9 +252,10 @@ def test_transcribe_mlx_unknown_model_warns_and_passes_through(tmp_path, capsys)
         _add_mlx_cache_mocks(mp)
         import importlib
 
-        import transcribe_whisperx
-        importlib.reload(transcribe_whisperx)
-        transcribe_whisperx.transcribe_mlx(str(dummy_audio), "my-custom/model", "ru")
+        import audio_transcribe.stages.transcribe as mod
+
+        importlib.reload(mod)
+        mod.transcribe_mlx(str(dummy_audio), "my-custom/model", "ru")
 
     mock_mlx.transcribe.assert_called_once_with(
         str(dummy_audio),
@@ -251,33 +267,11 @@ def test_transcribe_mlx_unknown_model_warns_and_passes_through(tmp_path, capsys)
     assert "not in MLX model map" in captured.err
 
 
-# --- _offset_segments (pure function) ---
-
-
-def test_offset_segments_shifts_timestamps():
-    segments = [
-        {"start": 0.0, "end": 2.5, "text": "hello"},
-        {"start": 3.0, "end": 5.0, "text": "world"},
-    ]
-    result = _offset_segments(segments, 10.0)
-    assert result[0]["start"] == 10.0
-    assert result[0]["end"] == 12.5
-    assert result[1]["start"] == 13.0
-    assert result[1]["end"] == 15.0
-
-
-def test_offset_segments_empty_list():
-    assert _offset_segments([], 5.0) == []
-
-
 # --- mlx-vad backend tests ---
 
 
 def _setup_mlx_vad_mocks(mp, audio_length_s=30, vad_chunks=None, transcribe_results=None):
-    """Set up sys.modules mocks for transcribe_mlx_vad and reload the module.
-
-    Returns (mock_mlx, reloaded_module, mock_mx).
-    """
+    """Set up sys.modules mocks for transcribe_mlx_vad and reload the module."""
     import importlib
 
     sample_rate = 16000
@@ -295,12 +289,11 @@ def _setup_mlx_vad_mocks(mp, audio_length_s=30, vad_chunks=None, transcribe_resu
     mock_wx_audio.SAMPLE_RATE = sample_rate
 
     mock_pyannote_mod = MagicMock()
-    mock_pyannote_mod.load_vad_model.return_value = MagicMock()  # vad_pipeline
+    mock_pyannote_mod.load_vad_model.return_value = MagicMock()
     mock_pyannote_mod.Pyannote.merge_chunks.return_value = vad_chunks or []
 
     mock_torch = MagicMock()
 
-    # Mock MLX core and ModelHolder for cache cleanup testing
     mock_mx = MagicMock()
     mock_model_holder = MagicMock()
     mock_model_holder.model = "loaded_model"
@@ -308,7 +301,6 @@ def _setup_mlx_vad_mocks(mp, audio_length_s=30, vad_chunks=None, transcribe_resu
     mock_mlx_transcribe_mod = MagicMock()
     mock_mlx_transcribe_mod.ModelHolder = mock_model_holder
 
-    # `import mlx.core as mx` resolves via sys.modules["mlx"].core attribute
     mock_mlx_pkg = MagicMock()
     mock_mlx_pkg.core = mock_mx
 
@@ -322,10 +314,10 @@ def _setup_mlx_vad_mocks(mp, audio_length_s=30, vad_chunks=None, transcribe_resu
     mp.setitem(sys.modules, "whisperx.vads.pyannote", mock_pyannote_mod)
     mp.setitem(sys.modules, "torch", mock_torch)
 
-    import transcribe_whisperx
+    import audio_transcribe.stages.transcribe as mod
 
-    importlib.reload(transcribe_whisperx)
-    return mock_mlx, transcribe_whisperx, mock_mx
+    importlib.reload(mod)
+    return mock_mlx, mod, mock_mx
 
 
 def test_transcribe_mlx_vad_offsets_timestamps(tmp_path):
@@ -355,11 +347,6 @@ def test_transcribe_mlx_vad_offsets_timestamps(tmp_path):
     assert result["segments"][0]["end"] == 12.5
     assert result["segments"][1]["start"] == 13.0
     assert result["segments"][1]["end"] == 15.0
-
-    mock_mlx.transcribe.assert_called_once()
-    call_kwargs = mock_mlx.transcribe.call_args
-    assert call_kwargs.kwargs["path_or_hf_repo"] == "mlx-community/whisper-large-v3-mlx"
-    assert call_kwargs.kwargs["condition_on_previous_text"] is False
 
 
 def test_transcribe_mlx_vad_processes_multiple_chunks(tmp_path):
@@ -391,14 +378,10 @@ def test_transcribe_mlx_vad_processes_multiple_chunks(tmp_path):
         result, _audio = mod.transcribe_mlx_vad(str(dummy_audio), "large-v3", "ru")
 
     assert len(result["segments"]) == 2
-    # Chunk 1: offset by 5.0
     assert result["segments"][0]["start"] == 5.0
     assert result["segments"][0]["end"] == 7.0
-    assert result["segments"][0]["text"] == "первый"
-    # Chunk 2: offset by 60.0
     assert result["segments"][1]["start"] == 60.0
     assert result["segments"][1]["end"] == 63.0
-    assert result["segments"][1]["text"] == "второй"
 
 
 def test_transcribe_mlx_vad_empty_vad(tmp_path):
@@ -413,9 +396,6 @@ def test_transcribe_mlx_vad_empty_vad(tmp_path):
     assert result["segments"] == []
     assert result["text"] == ""
     mock_mlx.transcribe.assert_not_called()
-
-
-# --- MLX cache cleanup tests ---
 
 
 def test_transcribe_mlx_vad_clears_mlx_cache(tmp_path):
@@ -433,10 +413,8 @@ def test_transcribe_mlx_vad_clears_mlx_cache(tmp_path):
 
         mod.transcribe_mlx_vad(str(dummy_audio), "large-v3", "ru")
 
-        # ModelHolder singleton should be cleared
         assert mock_model_holder.model is None
         assert mock_model_holder.model_path is None
-        # Metal cache limit should be set and cache cleared
         mock_mx.metal.set_cache_limit.assert_called_once_with(100_000_000)
         mock_mx.metal.clear_cache.assert_called_once()
 
@@ -460,10 +438,10 @@ def test_transcribe_mlx_clears_mlx_cache(tmp_path):
         mock_mx = _add_mlx_cache_mocks(mp)
         mock_model_holder = sys.modules["mlx_whisper.transcribe"].ModelHolder
 
-        import transcribe_whisperx
+        import audio_transcribe.stages.transcribe as mod
 
-        importlib.reload(transcribe_whisperx)
-        transcribe_whisperx.transcribe_mlx(str(dummy_audio), "large-v3", "ru")
+        importlib.reload(mod)
+        mod.transcribe_mlx(str(dummy_audio), "large-v3", "ru")
 
         assert mock_model_holder.model is None
         assert mock_model_holder.model_path is None

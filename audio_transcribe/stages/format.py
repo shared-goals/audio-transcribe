@@ -1,15 +1,7 @@
-#!/usr/bin/env python3
-"""Convert WhisperX JSON output to readable Markdown transcript.
+"""Format stage: convert WhisperX JSON output to readable Markdown transcript."""
 
-Usage:
-    uv run format_transcript.py result.json -o transcript.md
-    uv run format_transcript.py result.json  # stdout
-"""
+from __future__ import annotations
 
-import argparse
-import json
-import sys
-from pathlib import Path
 from typing import Any
 
 
@@ -106,28 +98,3 @@ def format_transcript(data: dict[str, Any]) -> str:
 
     lines.append("")
     return "\n".join(lines)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Convert WhisperX JSON to Markdown transcript")
-    parser.add_argument("json_file", help="WhisperX JSON output file")
-    parser.add_argument("-o", "--output", help="Output Markdown file (default: stdout)")
-    args = parser.parse_args()
-
-    json_path = Path(args.json_file)
-    if not json_path.exists():
-        print(f"Error: file not found: {json_path}", file=sys.stderr)
-        sys.exit(1)
-
-    data = json.loads(json_path.read_text(encoding="utf-8"))
-    markdown = format_transcript(data)
-
-    if args.output:
-        Path(args.output).write_text(markdown, encoding="utf-8")
-        print(f"Saved: {args.output}", file=sys.stderr)
-    else:
-        print(markdown)
-
-
-if __name__ == "__main__":
-    main()

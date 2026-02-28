@@ -1,15 +1,8 @@
-#!/usr/bin/env python3
 """FFmpeg audio preprocessing for WhisperX.
 
 Converts any audio format to 16kHz mono PCM WAV.
-
-Usage:
-    uv run preprocess.py input.m4a -o output.wav
-    uv run preprocess.py input.wav          # outputs input.16k.wav
-    uv run preprocess.py input.mp4 --no-silence-removal
 """
 
-import argparse
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +15,7 @@ def preprocess(
     silence_threshold_db: str = "-35dB",
     silence_duration: float = 0.3,
 ) -> str:
+    """Preprocess audio to 16kHz mono WAV with optional silence removal."""
     input_p = Path(input_path)
     if not input_p.exists():
         raise FileNotFoundError(f"Not found: {input_path}")
@@ -49,25 +43,3 @@ def preprocess(
     size_mb = Path(output_path).stat().st_size / 1_048_576
     print(f"Done: {output_path} ({size_mb:.1f} MB)", file=sys.stderr)
     return output_path
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Preprocess audio to 16kHz mono WAV")
-    parser.add_argument("input", help="Input file (WAV, M4A, MP3, FLAC, MP4, WebM)")
-    parser.add_argument("-o", "--output", help="Output path (default: <input>.16k.wav)")
-    parser.add_argument("--no-silence-removal", action="store_true")
-    parser.add_argument("--silence-threshold", default="-35dB")
-    parser.add_argument("--silence-duration", type=float, default=0.3)
-    args = parser.parse_args()
-
-    preprocess(
-        args.input,
-        args.output,
-        remove_silence=not args.no_silence_removal,
-        silence_threshold_db=args.silence_threshold,
-        silence_duration=args.silence_duration,
-    )
-
-
-if __name__ == "__main__":
-    main()

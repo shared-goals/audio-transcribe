@@ -1,10 +1,10 @@
-"""Tests for preprocess.py — FFmpeg audio preprocessing."""
+"""Tests for audio_transcribe.stages.preprocess — FFmpeg audio preprocessing."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from preprocess import preprocess
+from audio_transcribe.stages.preprocess import preprocess
 
 
 def test_file_not_found():
