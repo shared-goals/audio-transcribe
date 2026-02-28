@@ -120,6 +120,12 @@ Planned phases:
 
 Vault lives at `/Users/gnezim/_projects/gnezim/knowledge/`. Project spec at `knowledge/projects/personal/audio-transcribe/`.
 
+**Always update the Obsidian vault** when making progress — update the roadmap, project page, and task files at `knowledge/projects/personal/audio-transcribe/`.
+
 ## Memory Budget (24 GB M4)
 
 Sequential execution is intentional — Whisper (~6 GB) unloads before Ollama/Gemma 27B (~16 GB) loads. Do not attempt to run both simultaneously.
+
+## Git Conventions
+
+Do not include `Co-Authored-By` lines in commit messages.
