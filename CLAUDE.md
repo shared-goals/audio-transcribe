@@ -66,6 +66,11 @@ uv run benchmark.py clean.wav --stages transcribe align
 # Compare wav2vec2 alignment models (default 300M vs 1B)
 uv run compare_align.py clean.wav
 
+# Verify diarization with different speaker configs
+uv run verify_diarize.py clean.wav                          # default: 2-4, 2-6, 3-6
+uv run verify_diarize.py clean.wav --configs "2-4,2-6,3-6"  # custom configs
+uv run verify_diarize.py clean.wav --min-speakers 2 --max-speakers 4  # single config
+
 # Test Ollama LLM connectivity and Russian summarization
 uv run test_ollama.py
 uv run test_ollama.py --list-models
