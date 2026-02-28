@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -29,24 +30,29 @@ def process(
     align_model: Optional[str] = typer.Option(None, "--align-model", help="Custom alignment model HF repo"),
     no_align: bool = typer.Option(False, "--no-align", help="Skip alignment stage"),
     no_diarize: bool = typer.Option(False, "--no-diarize", help="Skip diarization stage"),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output JSON path"),
+    full: bool = typer.Option(False, "--full", help="Include diarization (slower). Default is fast pass."),
+    output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output directory for meeting notes"),
     transcript: Optional[Path] = typer.Option(None, "--transcript", help="Output Markdown transcript path"),
     json_mode: bool = typer.Option(False, "--json", help="Machine-readable JSON-lines output (no TUI)"),
 ) -> None:
-    """Run the full transcription pipeline."""
+    """Fast pass: transcribe + align → meeting note. Use --full to include diarization."""
     if not audio_file.exists():
         typer.echo(f"Error: file not found: {audio_file}", err=True)
         raise typer.Exit(1)
 
-    from audio_transcribe.pipeline import Pipeline, PipelineConfig
+    from audio_transcribe.pipeline import run_pipeline
     from audio_transcribe.progress.json_reporter import JsonReporter
     from audio_transcribe.progress.tui import TuiReporter
+    from audio_transcribe.stages.format import format_meeting_note, format_transcript
     from audio_transcribe.stats.store import StatsStore
 
     store = StatsStore(_DEFAULT_HISTORY)
     reporter = JsonReporter() if json_mode or not sys.stdout.isatty() else TuiReporter()
 
-    config = PipelineConfig(
+    # Fast pass by default; --full enables diarization; --no-diarize also forces skip
+    skip_diarize = no_diarize or not full
+
+    result = run_pipeline(
         audio_file=str(audio_file),
         language=language,
         model=model,
@@ -54,15 +60,32 @@ def process(
         min_speakers=min_speakers,
         max_speakers=max_speakers,
         align_model=align_model,
-        skip_align=no_align,
-        skip_diarize=no_diarize,
-        output=str(output) if output else None,
-        transcript_output=str(transcript) if transcript else None,
+        no_align=no_align,
+        no_diarize=skip_diarize,
         corrections_path=str(_DEFAULT_CORRECTIONS),
+        reporter=reporter,
+        stats_store=store,
     )
 
-    pipeline = Pipeline(reporter=reporter, stats_store=store)
-    pipeline.run(config)
+    # Determine output directory
+    output_dir = output if output is not None else Path(".")
+    stem = audio_file.stem
+
+    # Store raw JSON in .audio-data/
+    audio_data_dir = output_dir / ".audio-data"
+    audio_data_dir.mkdir(parents=True, exist_ok=True)
+    json_path = audio_data_dir / f"{stem}.json"
+    json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # Format and write meeting note
+    relative_json = f".audio-data/{stem}.json"
+    markdown = format_meeting_note(result, audio_data_path=relative_json)
+    md_path = output_dir / f"{stem}.md"
+    md_path.write_text(markdown, encoding="utf-8")
+
+    # Optional legacy transcript
+    if transcript:
+        transcript.write_text(format_transcript(result), encoding="utf-8")
 
 
 @app.command()

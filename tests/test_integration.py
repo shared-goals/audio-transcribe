@@ -28,7 +28,8 @@ def test_process_json_mode_with_mock(tmp_path, monkeypatch):
     """End-to-end process command with mocked ML stages verifies JSON output format."""
     audio = tmp_path / "test.wav"
     audio.touch()
-    output = tmp_path / "result.json"
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
 
     # Redirect history/corrections away from home directory
     monkeypatch.setattr("audio_transcribe.cli._DEFAULT_HISTORY", tmp_path / "history.json")
@@ -41,12 +42,14 @@ def test_process_json_mode_with_mock(tmp_path, monkeypatch):
         patch("audio_transcribe.pipeline.load_corrections", return_value=_MOCK_CORRECTIONS),
         patch("audio_transcribe.pipeline.build_output_stage", return_value=_MOCK_OUTPUT),
     ):
-        result = runner.invoke(app, ["process", str(audio), "--json", "-o", str(output), "--no-diarize"])
+        result = runner.invoke(app, ["process", str(audio), "--json", "-o", str(output_dir), "--no-diarize"])
 
     assert result.exit_code == 0, result.output
-    assert output.exists()
 
-    data = json.loads(output.read_text())
+    # JSON stored in .audio-data/
+    json_path = output_dir / ".audio-data" / "test.json"
+    assert json_path.exists()
+    data = json.loads(json_path.read_text())
     assert "segments" in data
     assert data["language"] == "ru"
 
@@ -62,7 +65,8 @@ def test_process_with_transcript_output(tmp_path, monkeypatch):
     """Process command should write a Markdown transcript when --transcript is given."""
     audio = tmp_path / "test.wav"
     audio.touch()
-    output = tmp_path / "result.json"
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
     transcript = tmp_path / "transcript.md"
 
     monkeypatch.setattr("audio_transcribe.cli._DEFAULT_HISTORY", tmp_path / "history.json")
@@ -74,11 +78,10 @@ def test_process_with_transcript_output(tmp_path, monkeypatch):
         patch("audio_transcribe.pipeline.align_stage", return_value=_MOCK_ALIGN_RV),
         patch("audio_transcribe.pipeline.load_corrections", return_value=_MOCK_CORRECTIONS),
         patch("audio_transcribe.pipeline.build_output_stage", return_value=_MOCK_OUTPUT),
-        patch("audio_transcribe.pipeline.format_stage", return_value="# Transcript\n\n[00:00] Speaker: hello"),
     ):
         result = runner.invoke(
             app,
-            ["process", str(audio), "--json", "-o", str(output), "--transcript", str(transcript), "--no-diarize"],
+            ["process", str(audio), "--json", "-o", str(output_dir), "--transcript", str(transcript), "--no-diarize"],
         )
 
     assert result.exit_code == 0, result.output
