@@ -4,9 +4,16 @@ All backends return (result_dict, audio_array) for downstream align/diarize stag
 """
 
 import gc
+import logging
 import sys
 import time
+import warnings
 from typing import Any
+
+# Suppress third-party noise that doesn't affect pipeline functionality
+warnings.filterwarnings("ignore", message="torchcodec is not installed correctly", category=UserWarning)
+warnings.filterwarnings("ignore", message="Lightning automatically upgraded", category=UserWarning)
+logging.getLogger("whisperx").setLevel(logging.WARNING)
 
 # Maps whisper model size names to mlx-community HuggingFace repos (Apple Silicon MLX backend)
 MLX_MODEL_MAP: dict[str, str] = {
