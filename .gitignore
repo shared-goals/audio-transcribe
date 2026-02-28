@@ -156,3 +156,6 @@ cython_debug/
 
 # Test data (audio files, transcription results)
 test_data/
+
+# Git worktrees
+.worktrees/
