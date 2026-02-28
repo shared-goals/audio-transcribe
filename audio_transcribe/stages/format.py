@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import re
+from datetime import date as date_type
 from typing import Any
+
+import yaml
 
 
 def format_time(seconds: float) -> str:
@@ -97,4 +101,66 @@ def format_transcript(data: dict[str, Any]) -> str:
         lines.append(format_segment(seg, legend))
 
     lines.append("")
+    return "\n".join(lines)
+
+
+def format_meeting_note(data: dict[str, Any], audio_data_path: str) -> str:
+    """Format WhisperX JSON as a reactive pipeline meeting note.
+
+    Produces markdown with reanalyze frontmatter flag.
+    Includes speaker section only if segments have speaker labels.
+    """
+    segments: list[dict[str, Any]] = data.get("segments", [])
+    audio_file = str(data.get("audio_file", "unknown"))
+    language = str(data.get("language", "unknown"))
+    model = str(data.get("model", "unknown"))
+    processing_time = float(data.get("processing_time_s", 0.0))
+
+    has_speakers = any(seg.get("speaker") for seg in segments)
+    legend = build_speaker_legend(segments) if has_speakers else {}
+    duration = compute_duration(segments)
+
+    # Extract date from audio filename, fall back to today
+    date_match = re.search(r"(\d{4}-\d{2}-\d{2})", audio_file)
+    date_str = date_match.group(1) if date_match else str(date_type.today())
+
+    # Build frontmatter
+    fm: dict[str, object] = {
+        "title": f"{date_str} meeting",
+        "date": date_str,
+        "duration": format_time(duration),
+        "language": language,
+        "model": model,
+        "processing_time_s": processing_time,
+        "reanalyze": True,
+        "audio_file": audio_file,
+        "audio_data": audio_data_path,
+    }
+
+    if legend:
+        fm["speakers"] = {sid: label for sid, label in legend.items()}
+
+    lines: list[str] = []
+
+    # Frontmatter
+    lines.append("---")
+    lines.append(yaml.dump(fm, allow_unicode=True, default_flow_style=False, sort_keys=False).rstrip())
+    lines.append("---")
+    lines.append("")
+
+    # Speaker legend (only if diarized)
+    if legend:
+        lines.append("## Speakers")
+        lines.append("")
+        for speaker_id, label in legend.items():
+            lines.append(f"- **{label}**: {speaker_id}")
+        lines.append("")
+
+    # Transcript
+    lines.append("## Transcript")
+    lines.append("")
+    for seg in segments:
+        lines.append(format_segment(seg, legend if has_speakers else None))
+    lines.append("")
+
     return "\n".join(lines)
