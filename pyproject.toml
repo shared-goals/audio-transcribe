@@ -42,6 +42,7 @@ ignore = ["ANN401"]  # Any is needed for untyped ML libraries (whisperx, torch)
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ANN"]
+"audio_transcribe/cli.py" = ["B008"]  # typer.Argument/Option in defaults is idiomatic
 
 [tool.mypy]
 strict = true
