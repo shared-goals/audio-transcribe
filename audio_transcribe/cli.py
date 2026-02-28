@@ -272,5 +272,52 @@ def learn(
     typer.echo(f"Saved to {_DEFAULT_CORRECTIONS}")
 
 
+@app.command()
+def identify(
+    meeting: Path = typer.Argument(..., help="Path to meeting markdown file"),
+    threshold: float = typer.Option(0.5, "--threshold", help="Cosine distance threshold for matching"),
+    db_dir: Path = typer.Option(Path.home() / ".audio-transcribe" / "speakers", "--db-dir"),
+    audio_file: Optional[str] = typer.Option(None, "--audio-file", help="Override audio file path"),
+) -> None:
+    """Auto-identify speakers using voice embedding database."""
+    from audio_transcribe.speakers.database import SpeakerDB
+    from audio_transcribe.stages.identify import identify_speakers
+
+    if not meeting.exists():
+        typer.echo(f"Error: file not found: {meeting}", err=True)
+        raise typer.Exit(1)
+
+    db = SpeakerDB(db_dir)
+    result = identify_speakers(meeting, db, threshold=threshold, audio_file_override=audio_file)
+
+    if result.matched:
+        for sid, name in result.matched.items():
+            typer.echo(f"  Matched {sid} → [[{name}]]")
+        typer.echo(f"Updated: {meeting} (reanalyze: true)")
+    else:
+        typer.echo("No speakers matched.")
+
+    if result.unmatched:
+        typer.echo(f"  Unmatched: {', '.join(result.unmatched)}")
+
+
+@app.command()
+def update(
+    meeting: Path = typer.Argument(..., help="Path to meeting markdown file"),
+    db_dir: Path = typer.Option(Path.home() / ".audio-transcribe" / "speakers", "--db-dir"),
+) -> None:
+    """Apply speaker mapping from frontmatter and enroll new voices."""
+    from audio_transcribe.speakers.database import SpeakerDB
+    from audio_transcribe.stages.update import update_meeting
+
+    if not meeting.exists():
+        typer.echo(f"Error: file not found: {meeting}", err=True)
+        raise typer.Exit(1)
+
+    db = SpeakerDB(db_dir)
+    update_meeting(meeting, db)
+    typer.echo(f"Updated: {meeting} (reanalyze: true)")
+
+
 if __name__ == "__main__":
     app()
