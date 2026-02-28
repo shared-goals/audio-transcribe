@@ -2,9 +2,11 @@
 
 import json
 
+from audio_transcribe.markdown.parser import parse_meeting
 from audio_transcribe.stages.format import (
     build_speaker_legend,
     compute_duration,
+    format_meeting_note,
     format_segment,
     format_time,
     format_transcript,
@@ -228,3 +230,77 @@ def test_format_transcript_unknown_speakers_not_in_legend():
     assert "speakers: 1" in md
     assert "[00:00] Unknown: a" in md
     assert "[00:01] Speaker A: b" in md
+
+
+# --- format_meeting_note ---
+
+
+def test_format_fast_pass_no_speakers():
+    """Fast pass output has no speaker section when diarization was skipped."""
+    data = {
+        "audio_file": "meeting.wav",
+        "language": "ru",
+        "model": "large-v3",
+        "processing_time_s": 10.0,
+        "segments": [
+            {"start": 0.0, "end": 2.5, "text": "Привет"},
+            {"start": 2.5, "end": 5.0, "text": "Здравствуйте"},
+        ],
+    }
+    result = format_meeting_note(data, audio_data_path=".audio-data/meeting.json")
+    doc = parse_meeting(result)
+
+    assert doc.frontmatter["reanalyze"] is True
+    assert doc.frontmatter["audio_data"] == ".audio-data/meeting.json"
+    assert "Speakers" not in doc.sections
+    assert "Transcript" in doc.sections
+    assert "Привет" in doc.sections["Transcript"]
+
+
+def test_format_with_speakers():
+    """When segments have speaker labels, include speaker section."""
+    data = {
+        "audio_file": "meeting.wav",
+        "language": "ru",
+        "model": "large-v3",
+        "processing_time_s": 10.0,
+        "segments": [
+            {"start": 0.0, "end": 2.5, "text": "Привет", "speaker": "SPEAKER_00"},
+            {"start": 2.5, "end": 5.0, "text": "Здравствуйте", "speaker": "SPEAKER_01"},
+        ],
+    }
+    result = format_meeting_note(data, audio_data_path=".audio-data/meeting.json")
+    doc = parse_meeting(result)
+
+    assert "Speakers" in doc.sections
+    assert doc.frontmatter["speakers"]["SPEAKER_00"] == "Speaker A"
+    assert doc.frontmatter["speakers"]["SPEAKER_01"] == "Speaker B"
+    assert "Speaker A" in doc.sections["Transcript"]
+
+
+def test_format_frontmatter_has_audio_file():
+    data = {
+        "audio_file": "recordings/2026-02-28-standup.mp3",
+        "language": "ru",
+        "model": "large-v3",
+        "processing_time_s": 10.0,
+        "segments": [{"start": 0.0, "end": 1.0, "text": "Hi"}],
+    }
+    result = format_meeting_note(data, audio_data_path=".audio-data/test.json")
+    doc = parse_meeting(result)
+    assert doc.frontmatter["audio_file"] == "recordings/2026-02-28-standup.mp3"
+    assert doc.frontmatter["date"] == "2026-02-28"
+
+
+def test_format_date_fallback_to_today():
+    data = {
+        "audio_file": "standup.wav",
+        "language": "ru",
+        "model": "large-v3",
+        "processing_time_s": 10.0,
+        "segments": [{"start": 0.0, "end": 1.0, "text": "Hi"}],
+    }
+    from datetime import date
+    result = format_meeting_note(data, audio_data_path=".audio-data/test.json")
+    doc = parse_meeting(result)
+    assert doc.frontmatter["date"] == str(date.today())
