@@ -89,6 +89,35 @@ def process(
 
 
 @app.command()
+def diarize(
+    meeting: Path = typer.Argument(..., help="Path to meeting markdown file"),
+    min_speakers: int = typer.Option(1, "--min-speakers"),
+    max_speakers: int = typer.Option(6, "--max-speakers"),
+    force: bool = typer.Option(False, "--force", help="Re-diarize even if already diarized"),
+    audio_file: Optional[str] = typer.Option(None, "--audio-file", help="Override audio file path"),
+) -> None:
+    """Add speaker diarization to an existing meeting note."""
+    from audio_transcribe.stages.diarize_update import diarize_and_update
+
+    if not meeting.exists():
+        typer.echo(f"Error: file not found: {meeting}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        diarize_and_update(
+            meeting,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+            force=force,
+            audio_file_override=audio_file,
+        )
+        typer.echo(f"Diarized: {meeting} (reanalyze: true)")
+    except RuntimeError as e:
+        typer.echo(f"Error: {e}. Use --force to re-diarize.", err=True)
+        raise typer.Exit(1) from e
+
+
+@app.command()
 def stats(
     last: int = typer.Option(10, "--last", "-n", help="Show last N runs"),
     clear: bool = typer.Option(False, "--clear", help="Clear all history"),
