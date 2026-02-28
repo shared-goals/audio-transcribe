@@ -9,9 +9,7 @@ End-to-end **local** pipeline that processes recorded meetings into structured O
 Full pipeline:
 ```
 Audio (WAV/M4A/MP3)
-  ↓ preprocess.py — FFmpeg: mono 16kHz, silence removal
-  ↓ transcribe_whisperx.py — WhisperX: transcription + alignment + diarization
-  ↓ format_transcript.py — JSON → readable Markdown transcript
+  ↓ audio-transcribe process — preprocess + transcribe + align + diarize + format
   ↓ Claude (via Claudian /process-meeting) — structured summary + vault note
 ```
 
@@ -51,29 +49,21 @@ Add dev dependencies to `pyproject.toml` under `[dependency-groups] dev` when se
 ## Running the Pipeline
 
 ```bash
-# Step 1: preprocess audio to 16kHz mono WAV
-uv run preprocess.py input.m4a -o clean.wav
-
-# Step 2: transcribe + align + diarize
-uv run transcribe_whisperx.py clean.wav -o result.json
+# Full pipeline: transcribe + format transcript
+audio-transcribe process input.m4a -o result.json --transcript transcript.md
 
 # Options
-uv run transcribe_whisperx.py clean.wav -l ru -m large-v3 --no-diarize -o result.json
+audio-transcribe process input.m4a -l ru -m large-v3 --backend mlx-vad -o result.json
+audio-transcribe process input.m4a --no-align --no-diarize -o result.json
 
-# Benchmark pipeline stages (time + RSS memory per stage)
-uv run benchmark.py clean.wav --stages transcribe align
+# View historical run statistics
+audio-transcribe stats --last 5
 
-# Compare wav2vec2 alignment models (default 300M vs 1B)
-uv run compare_align.py clean.wav
+# Get backend recommendations for a file
+audio-transcribe recommend input.m4a
 
-# Verify diarization with different speaker configs
-uv run verify_diarize.py clean.wav                          # default: 2-4, 2-6, 3-6
-uv run verify_diarize.py clean.wav --configs "2-4,2-6,3-6"  # custom configs
-uv run verify_diarize.py clean.wav --min-speakers 2 --max-speakers 4  # single config
-
-# Format transcript JSON as readable Markdown
-uv run format_transcript.py result.json -o transcript.md
-uv run format_transcript.py result.json  # stdout
+# Learn corrections from an edited transcript
+audio-transcribe learn corrected-transcript.md
 
 # Test Ollama LLM connectivity and Russian summarization
 uv run test_ollama.py
@@ -96,7 +86,7 @@ uv run test_ollama.py -m qwen2.5:14b
 
 ## Output Format
 
-`transcribe_whisperx.py` outputs JSON:
+`audio-transcribe process` outputs JSON:
 ```json
 {
   "audio_file": "...", "language": "ru", "model": "large-v3",
@@ -108,11 +98,21 @@ uv run test_ollama.py -m qwen2.5:14b
 }
 ```
 
+## Package Structure
+
+`audio_transcribe/` Python package:
+- `stages/` — preprocess, transcribe, align, diarize, format, correct
+- `progress/` — events, json_reporter (JSONL), tui (rich.live)
+- `stats/` — store (history.json), estimator (ETA), recommender, hardware
+- `quality/` — scorecard (graded quality metrics)
+
+Remaining utility script: `test_ollama.py`.
+
 ## Current Phase & Roadmap
 
-**Phase 3 (Claude-Powered Vault Integration)** — in progress.
+**Phase 3 (Unified CLI)** — complete.
 
-Scripts: `preprocess.py`, `transcribe_whisperx.py`, `format_transcript.py`, `benchmark.py`, `compare_align.py`, `verify_diarize.py`, `test_ollama.py`.
+Unified `audio-transcribe` CLI replaces old loose scripts.
 
 Planned phases:
 - **Phase 4**: Enhancements — task extraction, people cards, file watcher

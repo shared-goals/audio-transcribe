@@ -1,0 +1,7 @@
+{
+  "segments": [],
+  "audio_file": "test.wav",
+  "language": "ru",
+  "model": "large-v3",
+  "processing_time_s": 1.0
+}
