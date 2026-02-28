@@ -1,8 +1,8 @@
-"""Tests for format_transcript.py — all pure functions."""
+"""Tests for audio_transcribe.stages.format — transcript formatting."""
 
 import json
 
-from format_transcript import (
+from audio_transcribe.stages.format import (
     build_speaker_legend,
     compute_duration,
     format_segment,
