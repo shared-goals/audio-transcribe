@@ -300,8 +300,7 @@ Simple text replacement over segment and word text. Fast, deterministic.
 
 - `typer` -- CLI framework (type-hint based, built on click)
 - `rich` -- TUI progress display (also used by typer)
-
-No other new dependencies required.
+- `pyyaml` -- YAML parsing for meeting markdown frontmatter (used by reactive pipeline's markdown parser)
 
 ## Install Modes
 
