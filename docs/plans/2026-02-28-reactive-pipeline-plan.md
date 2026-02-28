@@ -6,7 +6,7 @@
 
 **Architecture:** Adds `speakers/` module (voice embeddings via pyannote wespeaker) and `markdown/` module (parse/update meeting notes in-place) to the existing `audio_transcribe/` package. New CLI subcommands: `diarize`, `identify`, `update`, `speakers`. A `reanalyze` frontmatter flag bridges CLI processing and manual Claudian analysis.
 
-**Tech Stack:** Python >=3.12, typer (CLI from unified plan), pyannote.audio (embeddings — already installed), numpy (embedding storage), scipy (cosine distance). Existing deps: torch, whisperx.
+**Tech Stack:** Python >=3.12, typer (CLI from unified plan), pyannote.audio (embeddings — already installed), numpy (embedding storage), pyyaml (frontmatter). Existing deps: torch, whisperx.
 
 **Prerequisite:** The unified CLI plan (17 tasks) must be completed first. This plan extends that package.
 
@@ -101,7 +101,7 @@ def test_parse_no_frontmatter():
     assert "Transcript" in doc.sections
 
 
-def test_roundtrip_preserves_content():
+def test_semantic_roundtrip():
     md = textwrap.dedent("""\
         ---
         title: Test meeting
@@ -118,7 +118,73 @@ def test_roundtrip_preserves_content():
         [00:00] Speaker A: Hello world
     """)
     doc = parse_meeting(md)
-    assert doc.to_markdown() == md
+    doc2 = parse_meeting(doc.to_markdown())
+    assert doc2.frontmatter == doc.frontmatter
+    assert doc2.sections == doc.sections
+    assert doc2._section_order == doc._section_order
+
+
+def test_wiki_link_roundtrip_through_yaml():
+    """Wiki-links with [[ ]] survive YAML dump/load cycle."""
+    md = textwrap.dedent("""\
+        ---
+        title: Test
+        speakers:
+          SPEAKER_00: "[[Andrey]]"
+          SPEAKER_01: "[[Maria]]"
+        ---
+
+        ## Transcript
+
+        [00:00] Hello
+    """)
+    doc = parse_meeting(md)
+    doc2 = parse_meeting(doc.to_markdown())
+    assert doc2.frontmatter["speakers"]["SPEAKER_00"] == "[[Andrey]]"
+    assert doc2.frontmatter["speakers"]["SPEAKER_01"] == "[[Maria]]"
+
+
+def test_section_order_enforced():
+    """Sections are output in canonical SECTION_ORDER regardless of insertion order."""
+    md = textwrap.dedent("""\
+        ---
+        title: Test
+        ---
+
+        ## Transcript
+
+        [00:00] Hello
+
+        ## Speakers
+
+        - **Speaker A**: SPEAKER_00
+    """)
+    doc = parse_meeting(md)
+    output = doc.to_markdown()
+    speakers_pos = output.index("## Speakers")
+    transcript_pos = output.index("## Transcript")
+    assert speakers_pos < transcript_pos
+
+
+def test_parse_speaker_legend():
+    md = textwrap.dedent("""\
+        ---
+        title: Test
+        ---
+
+        ## Speakers
+
+        - **Speaker A**: SPEAKER_00
+        - **[[Andrey]]**: SPEAKER_01
+
+        ## Transcript
+
+        [00:00] Hello
+    """)
+    doc = parse_meeting(md)
+    from audio_transcribe.markdown.parser import parse_speaker_legend
+    legend = parse_speaker_legend(doc)
+    assert legend == {"SPEAKER_00": "Speaker A", "SPEAKER_01": "[[Andrey]]"}
 ```
 
 **Step 2: Run tests to verify they fail**
@@ -144,6 +210,45 @@ from dataclasses import dataclass, field
 
 import yaml
 
+# Canonical section order. to_markdown() sorts by this. Unknown sections appended at end.
+SECTION_ORDER: list[str] = [
+    "Speakers",
+    "Summary",
+    "Key Points",
+    "Decisions",
+    "Action Items",
+    "Transcript",
+]
+
+_WIKI_LINK_RE = re.compile(r"\[\[.+?]]")
+
+
+class _QuotedStr(str):
+    """String subclass that forces yaml.dump to use double quotes."""
+
+
+def _quoted_representer(dumper: yaml.Dumper, data: _QuotedStr) -> yaml.ScalarNode:
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data, style='"')
+
+
+yaml.add_representer(_QuotedStr, _quoted_representer)
+
+
+def _force_quote_wiki_links(fm: dict[str, object]) -> dict[str, object]:
+    """Ensure values containing [[ are yaml.dump-safe (quoted strings).
+
+    Without this, yaml.dump may output [[Name]] unquoted, which yaml.safe_load
+    parses as a nested list instead of a string.
+    """
+    result = dict(fm)
+    speakers = result.get("speakers")
+    if isinstance(speakers, dict):
+        result["speakers"] = {
+            k: _QuotedStr(v) if isinstance(v, str) and "[[" in v else v
+            for k, v in speakers.items()
+        }
+    return result
+
 
 @dataclass
 class MeetingDoc:
@@ -159,12 +264,20 @@ class MeetingDoc:
         lines: list[str] = []
 
         if self.frontmatter:
+            # Force-quote wiki-link values to survive YAML roundtrip
+            safe_fm = _force_quote_wiki_links(self.frontmatter)
             lines.append("---")
-            lines.append(yaml.dump(self.frontmatter, allow_unicode=True, default_flow_style=False, sort_keys=False).rstrip())
+            lines.append(yaml.dump(safe_fm, allow_unicode=True, default_flow_style=False, sort_keys=False).rstrip())
             lines.append("---")
             lines.append("")
 
-        for name in self._section_order:
+        # Sort sections by canonical order; unknown sections appended at end
+        sorted_sections = sorted(
+            self._section_order,
+            key=lambda s: (SECTION_ORDER.index(s) if s in SECTION_ORDER else len(SECTION_ORDER), s),
+        )
+
+        for name in sorted_sections:
             lines.append(f"## {name}")
             lines.append("")
             content = self.sections.get(name, "")
@@ -178,6 +291,7 @@ class MeetingDoc:
 
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 _SECTION_RE = re.compile(r"^## (.+)$", re.MULTILINE)
+_LEGEND_LINE_RE = re.compile(r"- \*\*(.+?)\*\*: (SPEAKER_\d+)")
 
 
 def parse_meeting(text: str) -> MeetingDoc:
@@ -207,6 +321,20 @@ def parse_meeting(text: str) -> MeetingDoc:
         doc._section_order.append(name)
 
     return doc
+
+
+def parse_speaker_legend(doc: MeetingDoc) -> dict[str, str]:
+    """Parse the Speakers section into {SPEAKER_ID: current_label}.
+
+    E.g. "- **Speaker A**: SPEAKER_00" → {"SPEAKER_00": "Speaker A"}
+    """
+    legend: dict[str, str] = {}
+    speakers_section = doc.sections.get("Speakers", "")
+    for match in _LEGEND_LINE_RE.finditer(speakers_section):
+        label = match.group(1)
+        speaker_id = match.group(2)
+        legend[speaker_id] = label
+    return legend
 ```
 
 **Step 4: Run tests to verify they pass**
@@ -376,12 +504,25 @@ def set_frontmatter(doc: MeetingDoc, key: str, value: object) -> MeetingDoc:
 
 
 def apply_speaker_mapping(doc: MeetingDoc, mapping: dict[str, str]) -> MeetingDoc:
-    """Replace speaker labels throughout sections using the given mapping."""
+    """Replace speaker labels in targeted positions only (not arbitrary text).
+
+    In Transcript: matches '] Speaker A:' at line start.
+    In Speakers legend: matches '**Speaker A**'.
+    """
     result = deepcopy(doc)
     for section_name in result._section_order:
         content = result.sections[section_name]
         for old_name, new_name in mapping.items():
-            content = content.replace(old_name, new_name)
+            if section_name == "Transcript":
+                # Match speaker label at start of transcript line: '] Speaker A:'
+                content = re.sub(
+                    r"(\] )" + re.escape(old_name) + r":",
+                    r"\1" + new_name + ":",
+                    content,
+                )
+            elif section_name == "Speakers":
+                # Match bold label in legend: '**Speaker A**'
+                content = content.replace(f"**{old_name}**", f"**{new_name}**")
         result.sections[section_name] = content
     return result
 
@@ -474,9 +615,9 @@ def test_format_with_speakers():
     assert "Speaker A" in doc.sections["Transcript"]
 
 
-def test_format_frontmatter_has_date_from_filename():
+def test_format_frontmatter_has_audio_file():
     data = {
-        "audio_file": "2026-02-28-standup.wav",
+        "audio_file": "recordings/2026-02-28-standup.mp3",
         "language": "ru",
         "model": "large-v3",
         "processing_time_s": 10.0,
@@ -484,7 +625,22 @@ def test_format_frontmatter_has_date_from_filename():
     }
     result = format_meeting_note(data, audio_data_path=".audio-data/test.json")
     doc = parse_meeting(result)
+    assert doc.frontmatter["audio_file"] == "recordings/2026-02-28-standup.mp3"
     assert doc.frontmatter["date"] == "2026-02-28"
+
+
+def test_format_date_fallback_to_today():
+    data = {
+        "audio_file": "standup.wav",
+        "language": "ru",
+        "model": "large-v3",
+        "processing_time_s": 10.0,
+        "segments": [{"start": 0.0, "end": 1.0, "text": "Hi"}],
+    }
+    from datetime import date
+    result = format_meeting_note(data, audio_data_path=".audio-data/test.json")
+    doc = parse_meeting(result)
+    assert doc.frontmatter["date"] == str(date.today())
 ```
 
 **Step 2: Run tests to verify they fail**
@@ -513,9 +669,10 @@ def format_meeting_note(data: dict[str, object], audio_data_path: str) -> str:
     legend = build_speaker_legend(segments) if has_speakers else {}
     duration = compute_duration(segments)
 
-    # Extract date from audio filename
+    # Extract date from audio filename, fall back to today
+    from datetime import date as date_type
     date_match = re.search(r"(\d{4}-\d{2}-\d{2})", audio_file)
-    date_str = date_match.group(1) if date_match else ""
+    date_str = date_match.group(1) if date_match else str(date_type.today())
 
     # Build frontmatter
     fm: dict[str, object] = {
@@ -525,6 +682,7 @@ def format_meeting_note(data: dict[str, object], audio_data_path: str) -> str:
         "language": language,
         "model": model,
         "reanalyze": True,
+        "audio_file": audio_file,
         "audio_data": audio_data_path,
     }
 
@@ -651,7 +809,7 @@ def test_process_skips_diarize_by_default(tmp_path):
 
 
 def test_process_output_has_reanalyze_true(tmp_path):
-    """Output meeting note has reanalyze: true in frontmatter."""
+    """Output meeting note has reanalyze: true and audio_file in frontmatter."""
     audio_file = tmp_path / "2026-02-28-standup.wav"
     audio_file.write_bytes(b"fake")
     output_dir = tmp_path / "meetings"
@@ -673,6 +831,7 @@ def test_process_output_has_reanalyze_true(tmp_path):
     content = md_files[0].read_text()
     assert "reanalyze: true" in content
     assert "audio_data:" in content
+    assert "audio_file:" in content
 ```
 
 **Step 2: Run tests to verify they fail**
@@ -743,7 +902,7 @@ git commit -m "feat: process command stores JSON and skips diarize by default"
 
 ## Task 5: Diarize Subcommand
 
-Add `audio-transcribe diarize <meeting.md>` that reads the stored JSON, runs pyannote diarization, and updates the meeting note in-place with speaker labels.
+Add `audio-transcribe diarize <meeting.md>` that reads the stored JSON, runs pyannote diarization, and updates the meeting note in-place with speaker labels. Preserves existing transcript text (only adds speaker label prefixes). Refuses if already diarized unless `--force`.
 
 **Files:**
 - Modify: `audio_transcribe/cli.py`
@@ -772,6 +931,7 @@ def test_diarize_update_adds_speakers(tmp_path):
         title: 2026-02-28 meeting
         date: '2026-02-28'
         reanalyze: false
+        audio_file: meeting.wav
         audio_data: .audio-data/meeting.json
         ---
 
@@ -822,6 +982,7 @@ def test_diarize_update_stores_diarized_json(tmp_path):
     md_content = textwrap.dedent("""\
         ---
         title: Test
+        audio_file: test.wav
         audio_data: .audio-data/test.json
         ---
 
@@ -851,6 +1012,76 @@ def test_diarize_update_stores_diarized_json(tmp_path):
 
     updated_json = json.loads(json_path.read_text())
     assert updated_json["segments"][0]["speaker"] == "SPEAKER_00"
+
+
+def test_diarize_refuses_if_already_diarized(tmp_path):
+    """Diarize refuses if Speakers section exists unless force=True."""
+    md_content = textwrap.dedent("""\
+        ---
+        title: Test
+        audio_file: test.wav
+        audio_data: .audio-data/test.json
+        ---
+
+        ## Speakers
+
+        - **Speaker A**: SPEAKER_00
+
+        ## Transcript
+
+        [00:00] Speaker A: Hello
+    """)
+    meeting_md = tmp_path / "meeting.md"
+    meeting_md.write_text(md_content)
+
+    import pytest
+    with pytest.raises(RuntimeError, match="already diarized"):
+        diarize_and_update(meeting_md)
+
+
+def test_diarize_preserves_user_text_edits(tmp_path):
+    """Diarize adds speaker labels but preserves user-edited transcript text."""
+    md_content = textwrap.dedent("""\
+        ---
+        title: Test
+        audio_file: test.wav
+        audio_data: .audio-data/test.json
+        ---
+
+        ## Transcript
+
+        [00:00] Привет, коллеги!
+        [00:05] Добрый день всем
+    """)
+    meeting_md = tmp_path / "meeting.md"
+    meeting_md.write_text(md_content)
+
+    stored = {
+        "audio_file": "test.wav",
+        "segments": [
+            {"start": 0.0, "end": 2.5, "text": "Привет коллеги"},
+            {"start": 5.0, "end": 7.5, "text": "Добрый день"},
+        ],
+    }
+    data_dir = tmp_path / ".audio-data"
+    data_dir.mkdir()
+    (data_dir / "test.json").write_text(json.dumps(stored))
+
+    diarized = [
+        {"start": 0.0, "end": 2.5, "text": "Привет коллеги", "speaker": "SPEAKER_00"},
+        {"start": 5.0, "end": 7.5, "text": "Добрый день", "speaker": "SPEAKER_01"},
+    ]
+
+    with patch("audio_transcribe.stages.diarize_update.run_diarization", return_value=diarized):
+        diarize_and_update(meeting_md)
+
+    result = meeting_md.read_text()
+    # User's corrected text preserved (note: "коллеги!" with comma and exclamation)
+    assert "Привет, коллеги!" in result
+    assert "Добрый день всем" in result
+    # Speaker labels added
+    assert "Speaker A:" in result
+    assert "Speaker B:" in result
 ```
 
 **Step 2: Run tests to verify they fail**
@@ -867,15 +1098,16 @@ Expected: FAIL
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from audio_transcribe.markdown.parser import parse_meeting
 from audio_transcribe.markdown.updater import replace_section, set_frontmatter
-from audio_transcribe.stages.format import build_speaker_legend, format_segment, format_time
+from audio_transcribe.stages.format import build_speaker_legend, format_time
 
 
-def run_diarization(audio_file: str, segments: list[dict[str, Any]], min_speakers: int = 2, max_speakers: int = 6) -> list[dict[str, Any]]:
+def run_diarization(audio_file: str, segments: list[dict[str, Any]], min_speakers: int = 1, max_speakers: int = 6) -> list[dict[str, Any]]:
     """Run pyannote diarization on audio. Wraps the existing diarize stage."""
     # Import here to avoid loading torch at module level
     from audio_transcribe.stages.diarize import diarize  # from unified plan Task 7
@@ -883,18 +1115,38 @@ def run_diarization(audio_file: str, segments: list[dict[str, Any]], min_speaker
     return diarize(audio_file, segments, min_speakers=min_speakers, max_speakers=max_speakers)
 
 
-def diarize_and_update(meeting_path: Path, min_speakers: int = 2, max_speakers: int = 6) -> None:
-    """Run diarization and update the meeting note in-place."""
+def _match_timestamp(line: str) -> str | None:
+    """Extract MM:SS or HH:MM:SS timestamp from a transcript line."""
+    match = re.match(r"\[(\d[\d:]+)]", line)
+    return match.group(1) if match else None
+
+
+def diarize_and_update(
+    meeting_path: Path,
+    min_speakers: int = 1,
+    max_speakers: int = 6,
+    force: bool = False,
+    audio_file_override: str | None = None,
+) -> None:
+    """Run diarization and update the meeting note in-place.
+
+    Preserves existing transcript text — only adds speaker label prefixes.
+    Refuses if already diarized unless force=True.
+    """
     # Parse meeting
     md_text = meeting_path.read_text(encoding="utf-8")
     doc = parse_meeting(md_text)
+
+    # Check if already diarized
+    if "Speakers" in doc.sections and not force:
+        raise RuntimeError("already diarized — pass force=True to re-diarize")
 
     # Load stored JSON
     audio_data_rel = str(doc.frontmatter.get("audio_data", ""))
     json_path = meeting_path.parent / audio_data_rel
     stored = json.loads(json_path.read_text(encoding="utf-8"))
 
-    audio_file = str(stored.get("audio_file", ""))
+    audio_file = audio_file_override or str(doc.frontmatter.get("audio_file", stored.get("audio_file", "")))
     segments = stored.get("segments", [])
 
     # Run diarization
@@ -904,7 +1156,7 @@ def diarize_and_update(meeting_path: Path, min_speakers: int = 2, max_speakers: 
     stored["segments"] = diarized_segments
     json_path.write_text(json.dumps(stored, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # Build speaker legend and format transcript
+    # Build speaker legend
     legend = build_speaker_legend(diarized_segments)
     speakers_mapping = {sid: label for sid, label in legend.items()}
 
@@ -912,9 +1164,27 @@ def diarize_and_update(meeting_path: Path, min_speakers: int = 2, max_speakers: 
     speaker_lines = [f"- **{label}**: {sid}" for sid, label in legend.items()]
     speakers_content = "\n".join(speaker_lines)
 
-    # Build transcript section
-    transcript_lines = [format_segment(seg, legend) for seg in diarized_segments]
-    transcript_content = "\n".join(transcript_lines)
+    # Build timestamp → speaker mapping from diarized segments
+    ts_to_speaker: dict[str, str] = {}
+    for seg in diarized_segments:
+        ts = format_time(float(seg.get("start", 0.0)))
+        speaker_id = seg.get("speaker", "")
+        if speaker_id and speaker_id in legend:
+            ts_to_speaker[ts] = legend[speaker_id]
+
+    # Preserve existing transcript text, only add speaker prefixes
+    existing_transcript = doc.sections.get("Transcript", "")
+    new_lines: list[str] = []
+    for line in existing_transcript.split("\n"):
+        ts = _match_timestamp(line)
+        if ts and ts in ts_to_speaker:
+            speaker = ts_to_speaker[ts]
+            # Only add prefix if not already present
+            after_bracket = line.split("] ", 1)
+            if len(after_bracket) == 2 and not after_bracket[1].startswith(speaker + ":"):
+                line = f"[{ts}] {speaker}: {after_bracket[1]}"
+        new_lines.append(line)
+    transcript_content = "\n".join(new_lines)
 
     # Update document
     doc = replace_section(doc, "Speakers", speakers_content, before="Transcript")
@@ -934,14 +1204,26 @@ In `audio_transcribe/cli.py`:
 @app.command()
 def diarize(
     meeting: Path = typer.Argument(help="Path to meeting markdown file"),
-    min_speakers: int = typer.Option(2, "--min-speakers"),
+    min_speakers: int = typer.Option(1, "--min-speakers"),
     max_speakers: int = typer.Option(6, "--max-speakers"),
+    force: bool = typer.Option(False, "--force", help="Re-diarize even if already diarized"),
+    audio_file: str = typer.Option(None, "--audio-file", help="Override audio file path"),
 ):
     """Add speaker diarization to an existing meeting note."""
     from audio_transcribe.stages.diarize_update import diarize_and_update
 
-    diarize_and_update(meeting, min_speakers=min_speakers, max_speakers=max_speakers)
-    typer.echo(f"Diarized: {meeting} (reanalyze: true)")
+    try:
+        diarize_and_update(
+            meeting,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+            force=force,
+            audio_file_override=audio_file,
+        )
+        typer.echo(f"Diarized: {meeting} (reanalyze: true)")
+    except RuntimeError as e:
+        typer.echo(f"Error: {e}. Use --force to re-diarize.", err=True)
+        raise typer.Exit(1)
 ```
 
 **Step 5: Run tests**
@@ -1094,8 +1376,15 @@ Expected: FAIL
 
 from __future__ import annotations
 
+import functools
+import logging
+import os
+from typing import Any
+
 import numpy as np
 from numpy.typing import NDArray
+
+logger = logging.getLogger(__name__)
 
 
 def cosine_distance(a: NDArray[np.float32], b: NDArray[np.float32]) -> float:
@@ -1108,12 +1397,20 @@ def cosine_distance(a: NDArray[np.float32], b: NDArray[np.float32]) -> float:
     return 1.0 - dot / (norm_a * norm_b)
 
 
-def extract_embedding(audio_path: str, start: float, end: float) -> NDArray[np.float32]:
-    """Extract speaker embedding from an audio segment using pyannote wespeaker model.
+@functools.lru_cache(maxsize=1)
+def _get_model() -> Any:
+    """Lazily load and cache the pyannote embedding model."""
+    from pyannote.audio import Model
 
-    Loads model on first call (cached via functools).
-    """
-    from pyannote.audio import Model, Inference
+    return Model.from_pretrained(
+        "pyannote/wespeaker-voxceleb-resnet34-LM",
+        token=os.environ.get("HF_TOKEN"),
+    )
+
+
+def extract_embedding(audio_path: str, start: float, end: float) -> NDArray[np.float32]:
+    """Extract speaker embedding from an audio segment using pyannote wespeaker model."""
+    from pyannote.audio import Inference
     from pyannote.core import Segment
 
     model = _get_model()
@@ -1123,21 +1420,36 @@ def extract_embedding(audio_path: str, start: float, end: float) -> NDArray[np.f
     return np.array(embedding, dtype=np.float32).flatten()
 
 
-def _get_model():  # type: ignore[no-untyped-def]
-    """Lazily load and cache the pyannote embedding model."""
-    import functools
+def extract_speaker_embedding(
+    audio_file: str, segments: list[dict[str, Any]], speaker_id: str, min_duration: float = 1.0
+) -> NDArray[np.float32]:
+    """Extract average embedding for a speaker from their segments.
 
-    @functools.lru_cache(maxsize=1)
-    def _load():  # type: ignore[no-untyped-def]
-        from pyannote.audio import Model
-        import os
+    Returns zero vector if no segments >= min_duration seconds.
+    Logs a warning if no qualifying segments found.
+    """
+    speaker_segs = [s for s in segments if s.get("speaker") == speaker_id]
+    if not speaker_segs:
+        logger.warning("Speaker %s has no segments, skipping embedding extraction", speaker_id)
+        return np.zeros(256, dtype=np.float32)
 
-        return Model.from_pretrained(
-            "pyannote/wespeaker-voxceleb-resnet34-LM",
-            use_auth_token=os.environ.get("HF_TOKEN"),
+    embeddings = []
+    for seg in speaker_segs:
+        start = float(seg.get("start", 0.0))
+        end = float(seg.get("end", 0.0))
+        if end - start >= min_duration:
+            emb = extract_embedding(audio_file, start, end)
+            embeddings.append(emb)
+
+    if not embeddings:
+        logger.warning(
+            "Speaker %s has no segments >= %.1fs, skipping voice enrollment",
+            speaker_id,
+            min_duration,
         )
+        return np.zeros(256, dtype=np.float32)
 
-    return _load()
+    return np.mean(embeddings, axis=0).astype(np.float32)
 ```
 
 **Step 4: Implement database module**
@@ -1159,13 +1471,21 @@ from audio_transcribe.speakers.embeddings import cosine_distance
 
 
 class SpeakerDB:
-    """File-based speaker embedding database."""
+    """File-based speaker embedding database.
+
+    Names are normalized to lowercase for all lookups.
+    Display names are preserved in index.json under "display_name".
+    """
 
     def __init__(self, db_dir: Path) -> None:
         self._dir = db_dir
         self._dir.mkdir(parents=True, exist_ok=True)
         self._index_path = self._dir / "index.json"
         self._index: dict[str, dict[str, object]] = self._load_index()
+
+    @staticmethod
+    def _normalize(name: str) -> str:
+        return name.lower()
 
     def _load_index(self) -> dict[str, dict[str, object]]:
         if self._index_path.exists():
@@ -1179,25 +1499,27 @@ class SpeakerDB:
         )
 
     def _embedding_path(self, name: str) -> Path:
-        safe_name = name.lower().replace(" ", "_")
+        safe_name = self._normalize(name).replace(" ", "_")
         return self._dir / f"{safe_name}.npy"
 
     def has_speaker(self, name: str) -> bool:
-        return name in self._index
+        return self._normalize(name) in self._index
 
     def enroll(self, name: str, embedding: NDArray[np.float32]) -> None:
         """Add or update a speaker's embedding. Averages with existing if present."""
-        if name in self._index:
+        key = self._normalize(name)
+        if key in self._index:
             existing = self.get_embedding(name)
-            count = int(self._index[name].get("samples", 1))
+            count = int(self._index[key].get("samples", 1))
             # Running average
             averaged = (existing * count + embedding) / (count + 1)
             np.save(self._embedding_path(name), averaged)
-            self._index[name]["samples"] = count + 1
-            self._index[name]["last_seen"] = str(date.today())
+            self._index[key]["samples"] = count + 1
+            self._index[key]["last_seen"] = str(date.today())
         else:
             np.save(self._embedding_path(name), embedding)
-            self._index[name] = {
+            self._index[key] = {
+                "display_name": name,
                 "file": self._embedding_path(name).name,
                 "samples": 1,
                 "last_seen": str(date.today()),
@@ -1212,31 +1534,33 @@ class SpeakerDB:
     def match(self, query: NDArray[np.float32], threshold: float = 0.5) -> list[tuple[str, float]]:
         """Find speakers matching the query embedding.
 
-        Returns list of (name, distance) sorted by distance, filtered by threshold.
+        Returns list of (display_name, distance) sorted by distance, filtered by threshold.
         """
         results: list[tuple[str, float]] = []
-        for name in self._index:
-            stored = self.get_embedding(name)
+        for key, meta in self._index.items():
+            stored = np.load(self._dir / str(meta["file"])).astype(np.float32)
             dist = cosine_distance(query, stored)
             if dist < threshold:
-                results.append((name, dist))
+                display_name = str(meta.get("display_name", key))
+                results.append((display_name, dist))
         results.sort(key=lambda x: x[1])
         return results
 
     def list_speakers(self) -> list[dict[str, object]]:
         """List all known speakers with metadata."""
         return [
-            {"name": name, **meta}
-            for name, meta in self._index.items()
+            {"name": str(meta.get("display_name", key)), **{k: v for k, v in meta.items() if k != "display_name"}}
+            for key, meta in self._index.items()
         ]
 
     def forget(self, name: str) -> None:
         """Remove a speaker from the database."""
-        if name in self._index:
+        key = self._normalize(name)
+        if key in self._index:
             path = self._embedding_path(name)
             if path.exists():
                 path.unlink()
-            del self._index[name]
+            del self._index[key]
             self._save_index()
 ```
 
@@ -1292,6 +1616,7 @@ def test_identify_matches_known_speaker(tmp_path):
     md = textwrap.dedent("""\
         ---
         title: Test
+        audio_file: test.wav
         speakers:
           SPEAKER_00: Speaker A
         audio_data: .audio-data/test.json
@@ -1317,7 +1642,7 @@ def test_identify_matches_known_speaker(tmp_path):
     (data_dir / "test.json").write_text(json.dumps(stored))
 
     # Mock embedding extraction to return something close to Andrey
-    with patch("audio_transcribe.stages.identify.extract_speaker_embedding", return_value=np.array([0.95, 0.05, 0.0], dtype=np.float32)):
+    with patch("audio_transcribe.speakers.embeddings.extract_speaker_embedding", return_value=np.array([0.95, 0.05, 0.0], dtype=np.float32)):
         result = identify_speakers(meeting_path, db)
 
     assert len(result.matched) >= 1
@@ -1333,6 +1658,7 @@ def test_identify_no_match_for_unknown(tmp_path):
     md = textwrap.dedent("""\
         ---
         title: Test
+        audio_file: test.wav
         speakers:
           SPEAKER_00: Speaker A
         audio_data: .audio-data/test.json
@@ -1358,7 +1684,7 @@ def test_identify_no_match_for_unknown(tmp_path):
     (data_dir / "test.json").write_text(json.dumps(stored))
 
     # Return embedding far from Andrey
-    with patch("audio_transcribe.stages.identify.extract_speaker_embedding", return_value=np.array([0.0, 0.0, 1.0], dtype=np.float32)):
+    with patch("audio_transcribe.speakers.embeddings.extract_speaker_embedding", return_value=np.array([0.0, 0.0, 1.0], dtype=np.float32)):
         result = identify_speakers(meeting_path, db)
 
     assert len(result.matched) == 0
@@ -1384,11 +1710,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from numpy.typing import NDArray
 
 from audio_transcribe.markdown.parser import parse_meeting
 from audio_transcribe.markdown.updater import apply_speaker_mapping, set_frontmatter
 from audio_transcribe.speakers.database import SpeakerDB
+from audio_transcribe.speakers.embeddings import extract_speaker_embedding
 
 
 @dataclass
@@ -1399,33 +1725,12 @@ class IdentifyResult:
     unmatched: list[str] = field(default_factory=list)  # speaker_ids with no match
 
 
-def extract_speaker_embedding(audio_file: str, segments: list[dict[str, Any]], speaker_id: str) -> NDArray[np.float32]:
-    """Extract average embedding for a speaker from their segments."""
-    from audio_transcribe.speakers.embeddings import extract_embedding
-
-    speaker_segs = [s for s in segments if s.get("speaker") == speaker_id]
-    if not speaker_segs:
-        return np.zeros(256, dtype=np.float32)
-
-    embeddings = []
-    for seg in speaker_segs:
-        start = float(seg.get("start", 0.0))
-        end = float(seg.get("end", 0.0))
-        if end - start >= 1.0:  # Need at least 1 second of audio
-            emb = extract_embedding(audio_file, start, end)
-            embeddings.append(emb)
-
-    if not embeddings:
-        return np.zeros(256, dtype=np.float32)
-
-    return np.mean(embeddings, axis=0).astype(np.float32)
-
-
 def identify_speakers(
     meeting_path: Path,
     db: SpeakerDB,
     threshold: float = 0.5,
     update_file: bool = True,
+    audio_file_override: str | None = None,
 ) -> IdentifyResult:
     """Identify speakers in a meeting note using the voice embedding DB."""
     md_text = meeting_path.read_text(encoding="utf-8")
@@ -1435,7 +1740,7 @@ def identify_speakers(
     audio_data_rel = str(doc.frontmatter.get("audio_data", ""))
     json_path = meeting_path.parent / audio_data_rel
     stored = json.loads(json_path.read_text(encoding="utf-8"))
-    audio_file = str(stored.get("audio_file", ""))
+    audio_file = audio_file_override or str(doc.frontmatter.get("audio_file", stored.get("audio_file", "")))
     segments = stored.get("segments", [])
 
     # Get current speaker mapping
@@ -1488,13 +1793,14 @@ def identify(
     meeting: Path = typer.Argument(help="Path to meeting markdown file"),
     threshold: float = typer.Option(0.5, "--threshold", help="Cosine distance threshold for matching"),
     db_dir: Path = typer.Option(Path.home() / ".audio-transcribe" / "speakers", "--db-dir", help="Speaker DB directory"),
+    audio_file: str = typer.Option(None, "--audio-file", help="Override audio file path"),
 ):
     """Auto-identify speakers using voice embedding database."""
     from audio_transcribe.speakers.database import SpeakerDB
     from audio_transcribe.stages.identify import identify_speakers
 
     db = SpeakerDB(db_dir)
-    result = identify_speakers(meeting, db, threshold=threshold)
+    result = identify_speakers(meeting, db, threshold=threshold, audio_file_override=audio_file)
 
     if result.matched:
         for sid, name in result.matched.items():
@@ -1552,6 +1858,7 @@ def test_update_applies_speaker_mapping(tmp_path):
     md = textwrap.dedent("""\
         ---
         title: Test
+        audio_file: test.wav
         speakers:
           SPEAKER_00: "[[Andrey]]"
           SPEAKER_01: "[[Maria]]"
@@ -1584,7 +1891,7 @@ def test_update_applies_speaker_mapping(tmp_path):
 
     db_dir = tmp_path / "speakers"
 
-    with patch("audio_transcribe.stages.update.extract_speaker_embedding", return_value=np.random.randn(256).astype(np.float32)):
+    with patch("audio_transcribe.speakers.embeddings.extract_speaker_embedding", return_value=np.random.randn(256).astype(np.float32)):
         update_meeting(meeting_path, SpeakerDB(db_dir))
 
     result = meeting_path.read_text()
@@ -1599,6 +1906,7 @@ def test_update_enrolls_new_wiki_link_speakers(tmp_path):
     md = textwrap.dedent("""\
         ---
         title: Test
+        audio_file: test.wav
         speakers:
           SPEAKER_00: "[[Andrey]]"
         audio_data: .audio-data/test.json
@@ -1627,7 +1935,7 @@ def test_update_enrolls_new_wiki_link_speakers(tmp_path):
     db = SpeakerDB(db_dir)
 
     mock_embedding = np.random.randn(256).astype(np.float32)
-    with patch("audio_transcribe.stages.update.extract_speaker_embedding", return_value=mock_embedding):
+    with patch("audio_transcribe.speakers.embeddings.extract_speaker_embedding", return_value=mock_embedding):
         update_meeting(meeting_path, db)
 
     assert db.has_speaker("Andrey")
@@ -1648,36 +1956,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import numpy as np
-from numpy.typing import NDArray
 
-from audio_transcribe.markdown.parser import parse_meeting
+from audio_transcribe.markdown.parser import parse_meeting, parse_speaker_legend
 from audio_transcribe.markdown.updater import apply_speaker_mapping, extract_wiki_links, set_frontmatter
 from audio_transcribe.speakers.database import SpeakerDB
-
-
-def extract_speaker_embedding(audio_file: str, segments: list[dict[str, Any]], speaker_id: str) -> NDArray[np.float32]:
-    """Extract average embedding for a speaker from their segments."""
-    from audio_transcribe.speakers.embeddings import extract_embedding
-
-    speaker_segs = [s for s in segments if s.get("speaker") == speaker_id]
-    if not speaker_segs:
-        return np.zeros(256, dtype=np.float32)
-
-    embeddings = []
-    for seg in speaker_segs:
-        start = float(seg.get("start", 0.0))
-        end = float(seg.get("end", 0.0))
-        if end - start >= 1.0:
-            emb = extract_embedding(audio_file, start, end)
-            embeddings.append(emb)
-
-    if not embeddings:
-        return np.zeros(256, dtype=np.float32)
-
-    return np.mean(embeddings, axis=0).astype(np.float32)
+from audio_transcribe.speakers.embeddings import extract_speaker_embedding
 
 
 def update_meeting(meeting_path: Path, db: SpeakerDB) -> None:
@@ -1693,25 +1978,17 @@ def update_meeting(meeting_path: Path, db: SpeakerDB) -> None:
     audio_data_rel = str(doc.frontmatter.get("audio_data", ""))
     json_path = meeting_path.parent / audio_data_rel
     stored = json.loads(json_path.read_text(encoding="utf-8"))
-    audio_file = str(stored.get("audio_file", ""))
+    audio_file = str(doc.frontmatter.get("audio_file", stored.get("audio_file", "")))
     segments = stored.get("segments", [])
 
     # Build mapping from current legend labels to frontmatter values
-    # Parse speaker legend to find current label for each SPEAKER_ID
-    legend_section = doc.sections.get("Speakers", "")
+    legend = parse_speaker_legend(doc)  # {SPEAKER_ID: current_label}
     label_mapping: dict[str, str] = {}
 
     for speaker_id, new_label in speakers.items():
-        # Find current label in legend: "- **Speaker A**: SPEAKER_00" → "Speaker A"
-        for line in legend_section.split("\n"):
-            if speaker_id in line:
-                # Extract bold label: **Label**
-                import re
-                bold_match = re.search(r"\*\*(.+?)\*\*", line)
-                if bold_match:
-                    old_label = bold_match.group(1)
-                    if old_label != new_label:
-                        label_mapping[old_label] = str(new_label)
+        old_label = legend.get(speaker_id)
+        if old_label and old_label != new_label:
+            label_mapping[old_label] = str(new_label)
 
     # Apply mapping
     if label_mapping:
@@ -1944,16 +2221,13 @@ $ARGUMENTS — path to the meeting Markdown file (relative to vault root), e.g. 
 **Create people card stubs** for any `[[Person]]` links in speaker mapping where the person file doesn't exist yet:
 
 For each person name from `[[Name]]` links:
-1. Check if `people/work/*/Name.md` or `people/personal/Name.md` exists
-2. If not, create a stub at `people/work/unknown/Name.md`:
+1. Check if `people/Name.md` or `people/*/Name.md` exists
+2. If not, create a stub at `people/Name.md`:
 
 ```yaml
 ---
-name: Name
-category: work
-company: unknown
-role: ''
-status: active
+type: person
+created: YYYY-MM-DD
 ---
 
 # Name
@@ -2011,6 +2285,7 @@ def test_diarize_enrolls_wiki_link_speakers(tmp_path):
     md = textwrap.dedent("""\
         ---
         title: Test
+        audio_file: test.wav
         speakers:
           SPEAKER_00: "[[Andrey]]"
         audio_data: .audio-data/test.json
@@ -2043,7 +2318,7 @@ def test_diarize_enrolls_wiki_link_speakers(tmp_path):
 
     with (
         patch("audio_transcribe.stages.diarize_update.run_diarization", return_value=diarized),
-        patch("audio_transcribe.stages.diarize_update.extract_speaker_embedding", return_value=mock_embedding),
+        patch("audio_transcribe.speakers.embeddings.extract_speaker_embedding", return_value=mock_embedding),
     ):
         diarize_and_update(meeting_path, db=db)
 
@@ -2057,29 +2332,10 @@ Expected: FAIL
 
 **Step 3: Modify diarize_and_update**
 
-Add optional `db` parameter and enrollment logic to `audio_transcribe/stages/diarize_update.py`:
+Add optional `db` parameter and enrollment logic to `audio_transcribe/stages/diarize_update.py`. Import `extract_speaker_embedding` from the shared `speakers.embeddings` module (no duplication):
 
 ```python
-def extract_speaker_embedding(audio_file: str, segments: list[dict[str, Any]], speaker_id: str) -> NDArray[np.float32]:
-    """Extract average embedding for a speaker. Reuse from update module."""
-    from audio_transcribe.speakers.embeddings import extract_embedding
-
-    speaker_segs = [s for s in segments if s.get("speaker") == speaker_id]
-    if not speaker_segs:
-        return np.zeros(256, dtype=np.float32)
-
-    embeddings = []
-    for seg in speaker_segs:
-        start = float(seg.get("start", 0.0))
-        end = float(seg.get("end", 0.0))
-        if end - start >= 1.0:
-            emb = extract_embedding(audio_file, start, end)
-            embeddings.append(emb)
-
-    if not embeddings:
-        return np.zeros(256, dtype=np.float32)
-
-    return np.mean(embeddings, axis=0).astype(np.float32)
+from audio_transcribe.speakers.embeddings import extract_speaker_embedding
 
 
 def diarize_and_update(
@@ -2110,7 +2366,7 @@ def diarize_and_update(
                         db.enroll(person_name, embedding)
 ```
 
-Also add `import numpy as np` and `from numpy.typing import NDArray` to imports. Update the `diarize` CLI command to pass `db`.
+Also add `import numpy as np` to imports. Update the `diarize` CLI command to pass `db`. The `extract_speaker_embedding` function is already imported from `speakers.embeddings` — no local definition needed.
 
 **Step 4: Run tests**
 
@@ -2216,7 +2472,7 @@ def test_full_reactive_workflow(tmp_path):
     db = SpeakerDB(db_dir)
 
     mock_embedding = np.random.randn(256).astype(np.float32)
-    with patch("audio_transcribe.stages.update.extract_speaker_embedding", return_value=mock_embedding):
+    with patch("audio_transcribe.speakers.embeddings.extract_speaker_embedding", return_value=mock_embedding):
         update_meeting(md_path, db)
 
     doc = parse_meeting(md_path.read_text())
@@ -2248,9 +2504,9 @@ git commit -m "test: add integration test for full reactive pipeline workflow"
 
 ---
 
-## Task 13: Add scipy + numpy to Dependencies
+## Task 13: Add numpy + pyyaml to Dependencies
 
-Ensure `scipy` (for cosine distance if needed) and `numpy` (for embeddings) are in project dependencies. numpy is already a transitive dep of torch but should be explicit.
+Ensure `numpy` (for embeddings) and `pyyaml` (for frontmatter parsing) are in project dependencies. numpy is already a transitive dep of torch but should be explicit. pyyaml is needed by the markdown parser.
 
 **Files:**
 - Modify: `pyproject.toml`
@@ -2272,7 +2528,7 @@ dependencies = [
 ]
 ```
 
-Note: `scipy` is NOT added — we implement cosine distance with pure numpy (see `embeddings.py`), avoiding the extra dependency. `pyannote.audio` is already a transitive dep of `whisperx`.
+Note: cosine distance is implemented with pure numpy (see `embeddings.py`), avoiding a scipy dependency. `pyannote.audio` is already a transitive dep of `whisperx`. `pyyaml` is needed by the markdown parser — also add it to the unified CLI plan dependencies.
 
 **Step 2: Sync**
 
@@ -2293,20 +2549,133 @@ git commit -m "chore: add numpy as explicit dependency for speaker embeddings"
 
 ---
 
+---
+
+## Task 14: Identify Integration Test
+
+Separate integration test proving that speakers enrolled from meeting 1 are correctly identified in meeting 2 via voice matching.
+
+**Files:**
+- Create: `tests/test_identify_integration.py`
+
+**Step 1: Write the integration test**
+
+```python
+# tests/test_identify_integration.py
+"""Integration test for speaker identification across meetings."""
+
+import json
+from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
+
+from audio_transcribe.markdown.parser import parse_meeting
+from audio_transcribe.speakers.database import SpeakerDB
+from audio_transcribe.stages.format import format_meeting_note
+from audio_transcribe.stages.identify import identify_speakers
+from audio_transcribe.stages.update import update_meeting
+
+
+def test_identify_matches_enrolled_speaker_from_previous_meeting(tmp_path):
+    """Speakers enrolled from meeting 1 are identified in meeting 2."""
+    db_dir = tmp_path / "speakers"
+    db = SpeakerDB(db_dir)
+
+    # === Meeting 1: enroll Andrey ===
+    m1_dir = tmp_path / "meeting1"
+    m1_dir.mkdir()
+    data_dir1 = m1_dir / ".audio-data"
+    data_dir1.mkdir()
+
+    m1_data = {
+        "audio_file": "meeting1.wav",
+        "language": "ru",
+        "model": "large-v3",
+        "processing_time_s": 10.0,
+        "segments": [
+            {"start": 0.0, "end": 5.0, "text": "Привет", "speaker": "SPEAKER_00"},
+        ],
+    }
+    (data_dir1 / "meeting1.json").write_text(json.dumps(m1_data))
+
+    m1_md = format_meeting_note(m1_data, audio_data_path=".audio-data/meeting1.json")
+    m1_path = m1_dir / "meeting1.md"
+    m1_path.write_text(m1_md)
+
+    # User maps speaker and runs update → enrolls Andrey
+    content = m1_path.read_text()
+    content = content.replace("SPEAKER_00: Speaker A", 'SPEAKER_00: "[[Andrey]]"')
+    m1_path.write_text(content)
+
+    andrey_embedding = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    with patch("audio_transcribe.speakers.embeddings.extract_speaker_embedding", return_value=andrey_embedding):
+        update_meeting(m1_path, db)
+
+    assert db.has_speaker("Andrey")
+
+    # === Meeting 2: identify Andrey ===
+    m2_dir = tmp_path / "meeting2"
+    m2_dir.mkdir()
+    data_dir2 = m2_dir / ".audio-data"
+    data_dir2.mkdir()
+
+    m2_data = {
+        "audio_file": "meeting2.wav",
+        "language": "ru",
+        "model": "large-v3",
+        "processing_time_s": 8.0,
+        "segments": [
+            {"start": 0.0, "end": 4.0, "text": "Добрый день", "speaker": "SPEAKER_00"},
+        ],
+    }
+    (data_dir2 / "meeting2.json").write_text(json.dumps(m2_data))
+
+    m2_md = format_meeting_note(m2_data, audio_data_path=".audio-data/meeting2.json")
+    m2_path = m2_dir / "meeting2.md"
+    m2_path.write_text(m2_md)
+
+    # Identify should match SPEAKER_00 → Andrey (embedding close to [1,0,0])
+    similar_embedding = np.array([0.95, 0.05, 0.0], dtype=np.float32)
+    with patch("audio_transcribe.speakers.embeddings.extract_speaker_embedding", return_value=similar_embedding):
+        result = identify_speakers(m2_path, db)
+
+    assert result.matched.get("SPEAKER_00") == "Andrey"
+
+    # Verify the meeting file was updated
+    doc = parse_meeting(m2_path.read_text())
+    assert doc.frontmatter["speakers"]["SPEAKER_00"] == "[[Andrey]]"
+```
+
+**Step 2: Run the test**
+
+Run: `uv run pytest tests/test_identify_integration.py -v`
+Expected: PASS
+
+**Step 3: Commit**
+
+```bash
+git add tests/test_identify_integration.py
+git commit -m "test: add integration test for cross-meeting speaker identification"
+```
+
+---
+
 ## Task Summary
 
 | Task | Description | Depends On |
 |------|-------------|------------|
-| 1 | Meeting markdown parser | Unified plan complete |
-| 2 | Meeting markdown updater | Task 1 |
-| 3 | Format stage for fast pass | Tasks 1, 2 + unified plan Task 8 |
+| 1 | Meeting markdown parser (+ SECTION_ORDER, parse_speaker_legend, wiki-link quoting) | Unified plan complete |
+| 2 | Meeting markdown updater (targeted regex replacement) | Task 1 |
+| 3 | Format stage for fast pass (audio_file frontmatter, date fallback) | Tasks 1, 2 + unified plan Task 8 |
 | 4 | Process command — store JSON, skip diarize | Task 3 + unified plan Task 13 |
-| 5 | Diarize subcommand | Tasks 1, 2, 3 + unified plan Task 7 |
-| 6 | Speaker embedding database | — (independent) |
-| 7 | Identify subcommand | Tasks 1, 2, 6 |
-| 8 | Update subcommand + voice enrollment | Tasks 1, 2, 6 |
+| 5 | Diarize subcommand (--force, --audio-file, preserve text) | Tasks 1, 2, 3 + unified plan Task 7 |
+| 6 | Speaker embedding database (case-normalized, short-segment warnings) | — (independent) |
+| 7 | Identify subcommand (--audio-file) | Tasks 1, 2, 6 |
+| 8 | Update subcommand + voice enrollment (uses parse_speaker_legend) | Tasks 1, 2, 6 |
 | 9 | Speakers list/forget CLI | Task 6 |
-| 10 | Update /process-meeting Claude command | — (independent) |
+| 10 | Update /process-meeting Claude command (people stubs at people/Name.md) | — (independent) |
 | 11 | Diarize auto-enrollment hook | Tasks 5, 6 |
-| 12 | Integration test | Tasks 1-9, 11 |
-| 13 | Add numpy dependency | — (do anytime) |
+| 12 | Integration test — full reactive workflow | Tasks 1-9, 11 |
+| 13 | Add numpy + pyyaml dependencies | — (do anytime) |
+| 14 | Integration test — cross-meeting speaker identification | Tasks 6, 7, 8 |
