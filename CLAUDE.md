@@ -11,8 +11,8 @@ Full pipeline:
 Audio (WAV/M4A/MP3)
   ↓ preprocess.py — FFmpeg: mono 16kHz, silence removal
   ↓ transcribe_whisperx.py — WhisperX: transcription + alignment + diarization
-  ↓ [planned] summarize.py — Ollama (Gemma 27B / Qwen 2.5): structured summary
-  ↓ [planned] vault.py — write meeting notes, tasks, people cards to Obsidian vault
+  ↓ format_transcript.py — JSON → readable Markdown transcript
+  ↓ Claude (via Claudian /process-meeting) — structured summary + vault note
 ```
 
 ## Setup
@@ -71,6 +71,10 @@ uv run verify_diarize.py clean.wav                          # default: 2-4, 2-6,
 uv run verify_diarize.py clean.wav --configs "2-4,2-6,3-6"  # custom configs
 uv run verify_diarize.py clean.wav --min-speakers 2 --max-speakers 4  # single config
 
+# Format transcript JSON as readable Markdown
+uv run format_transcript.py result.json -o transcript.md
+uv run format_transcript.py result.json  # stdout
+
 # Test Ollama LLM connectivity and Russian summarization
 uv run test_ollama.py
 uv run test_ollama.py --list-models
@@ -106,13 +110,13 @@ uv run test_ollama.py -m qwen2.5:14b
 
 ## Current Phase & Roadmap
 
-**Phase 1 (Foundation)** — in progress. Existing scripts: `preprocess.py`, `transcribe_whisperx.py`, `benchmark.py`, `test_ollama.py`, `compare_align.py`.
+**Phase 3 (Claude-Powered Vault Integration)** — in progress.
+
+Scripts: `preprocess.py`, `transcribe_whisperx.py`, `format_transcript.py`, `benchmark.py`, `compare_align.py`, `verify_diarize.py`, `test_ollama.py`.
 
 Planned phases:
-- **Phase 2**: Tune diarization on real Russian multi-speaker meetings
-- **Phase 3**: LLM summarization prompts (topics, decisions, action items, task extraction)
-- **Phase 4**: Obsidian vault integration — write `meetings/YYYY-MM-DD-<title>.md`, task notes, people card updates
-- **Phase 5**: End-to-end script + file watcher for `meetings/audio/`
+- **Phase 4**: Enhancements — task extraction, people cards, file watcher
+- **Phase 5**: Local LLM fallback — Ollama/Gemma offline pipeline
 
 Vault lives at `/Users/gnezim/_projects/gnezim/knowledge/`. Project spec at `knowledge/projects/personal/audio-transcribe/`.
 
