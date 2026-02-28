@@ -11,6 +11,9 @@ import typer
 
 app = typer.Typer(name="audio-transcribe", help="Local audio transcription pipeline.")
 
+speakers_app = typer.Typer(help="Manage known speaker voice embeddings.")
+app.add_typer(speakers_app, name="speakers")
+
 _DEFAULT_HISTORY = Path.home() / ".audio-transcribe" / "history.json"
 _DEFAULT_CORRECTIONS = Path.home() / ".audio-transcribe" / "corrections.yaml"
 
@@ -317,6 +320,44 @@ def update(
     db = SpeakerDB(db_dir)
     update_meeting(meeting, db)
     typer.echo(f"Updated: {meeting} (reanalyze: true)")
+
+
+@speakers_app.command("list")
+def speakers_list(
+    db_dir: Path = typer.Option(Path.home() / ".audio-transcribe" / "speakers", "--db-dir"),
+) -> None:
+    """List all known speakers in the voice embedding database."""
+    from audio_transcribe.speakers.database import SpeakerDB
+
+    db = SpeakerDB(db_dir)
+    known = db.list_speakers()
+
+    if not known:
+        typer.echo("No speakers enrolled yet.")
+        return
+
+    for s in known:
+        name = s["name"]
+        samples = s.get("samples", 0)
+        last_seen = s.get("last_seen", "unknown")
+        typer.echo(f"  {name} ({samples} samples, last seen {last_seen})")
+
+
+@speakers_app.command("forget")
+def speakers_forget(
+    name: str = typer.Argument(..., help="Speaker name to remove"),
+    db_dir: Path = typer.Option(Path.home() / ".audio-transcribe" / "speakers", "--db-dir"),
+) -> None:
+    """Remove a speaker from the voice embedding database."""
+    from audio_transcribe.speakers.database import SpeakerDB
+
+    db = SpeakerDB(db_dir)
+    if not db.has_speaker(name):
+        typer.echo(f"Speaker not found: {name}")
+        return
+
+    db.forget(name)
+    typer.echo(f"Removed: {name}")
 
 
 if __name__ == "__main__":
