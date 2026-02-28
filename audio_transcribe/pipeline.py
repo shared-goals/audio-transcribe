@@ -88,6 +88,7 @@ class PipelineConfig:
     output: str | None = None
     transcript_output: str | None = None
     corrections_path: str | None = None
+    suppress_stdout_json: bool = False  # Don't print JSON to stdout (when output handled externally)
 
 
 class Pipeline:
@@ -186,8 +187,8 @@ class Pipeline:
             )
         )
 
-        # Print JSON to stdout if no output file specified
-        if not config.output:
+        # Print JSON to stdout if no output file specified and not suppressed
+        if not config.output and not config.suppress_stdout_json:
             print(json.dumps(output, ensure_ascii=False, indent=2))
 
         result_dict: dict[str, Any] = output
@@ -203,3 +204,35 @@ class Pipeline:
             StageComplete(stage=name, time_s=round(elapsed, 1), peak_rss_mb=round(_current_rss_mb(), 0))
         )
         return result
+
+
+def run_pipeline(
+    audio_file: str,
+    language: str = "ru",
+    model: str = "large-v3",
+    backend: str = "whisperx",
+    min_speakers: int = 2,
+    max_speakers: int = 6,
+    align_model: str | None = None,
+    no_align: bool = False,
+    no_diarize: bool = False,
+    corrections_path: str | None = None,
+    reporter: Any = None,
+    stats_store: Any = None,
+) -> dict[str, Any]:
+    """Run pipeline and return output dict. Output file handling is the caller's responsibility."""
+    config = PipelineConfig(
+        audio_file=audio_file,
+        language=language,
+        model=model,
+        backend=backend,
+        min_speakers=min_speakers,
+        max_speakers=max_speakers,
+        align_model=align_model,
+        skip_align=no_align,
+        skip_diarize=no_diarize,
+        corrections_path=corrections_path,
+        suppress_stdout_json=True,
+    )
+    p = Pipeline(reporter=reporter, stats_store=stats_store)
+    return p.run(config)
