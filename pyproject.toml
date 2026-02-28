@@ -7,7 +7,13 @@ dependencies = [
     "torch>=2.8.0",
     "torchaudio>=2.8.0",
     "whisperx>=3.8.0",
+    "typer>=0.15.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
 ]
+
+[project.scripts]
+audio-transcribe = "audio_transcribe.cli:app"
 
 [project.optional-dependencies]
 mlx = [
@@ -34,7 +40,7 @@ select = ["E", "F", "I", "N", "W", "B", "ANN"]
 ignore = ["ANN401"]  # Any is needed for untyped ML libraries (whisperx, torch)
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*.py" = ["ANN"]
+"tests/**/*.py" = ["ANN"]
 
 [tool.mypy]
 strict = true
