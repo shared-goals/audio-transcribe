@@ -115,9 +115,12 @@ def diarize_and_update(
         if line_ts and line_ts in ts_to_speaker:
             speaker = ts_to_speaker[line_ts]
             after_bracket = line.split("] ", 1)
-            if len(after_bracket) == 2 and not after_bracket[1].startswith(speaker + ":"):
-                # Strip any pre-existing speaker prefix before prepending new label
-                text_part = re.sub(r"^(?:Speaker [A-Z]|SPEAKER_\d+|Unknown|None):\s+", "", after_bracket[1])
+            if len(after_bracket) == 2:
+                # Strip all stacked speaker prefixes (e.g. "Speaker A: Unknown: text" → "text")
+                _pfx = re.compile(r"^(?:Speaker [A-Z]|SPEAKER_\d+|Unknown|None):\s+")
+                text_part = after_bracket[1]
+                while _pfx.match(text_part):
+                    text_part = _pfx.sub("", text_part, count=1)
                 out_line = f"[{line_ts}] {speaker}: {text_part}"
         new_lines.append(out_line)
     transcript_content = "\n".join(new_lines)
