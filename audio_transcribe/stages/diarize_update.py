@@ -5,11 +5,17 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
 
 from audio_transcribe.markdown.parser import parse_meeting
-from audio_transcribe.markdown.updater import replace_section, set_frontmatter
+from audio_transcribe.markdown.updater import extract_wiki_links, replace_section, set_frontmatter
+from audio_transcribe.speakers import embeddings as _embeddings
 from audio_transcribe.stages.format import build_speaker_legend, format_time
+
+if TYPE_CHECKING:
+    from audio_transcribe.speakers.database import SpeakerDB
 
 
 def run_diarization(
@@ -47,11 +53,13 @@ def diarize_and_update(
     max_speakers: int = 6,
     force: bool = False,
     audio_file_override: str | None = None,
+    db: SpeakerDB | None = None,
 ) -> None:
     """Run diarization and update the meeting note in-place.
 
     Preserves existing transcript text — only adds speaker label prefixes.
     Raises RuntimeError if already diarized unless force=True.
+    If db is provided and frontmatter has [[wiki-link]] speakers, enroll them.
     """
     md_text = meeting_path.read_text(encoding="utf-8")
     doc = parse_meeting(md_text)
@@ -59,6 +67,12 @@ def diarize_and_update(
     # Check if already diarized
     if "Speakers" in doc.sections and not force:
         raise RuntimeError("already diarized — pass force=True to re-diarize")
+
+    # Capture pre-existing wiki-link speaker mappings before overwriting
+    pre_speakers = doc.frontmatter.get("speakers", {})
+    pre_wiki_links: dict[str, str] = {}
+    if isinstance(pre_speakers, dict) and db is not None:
+        pre_wiki_links = extract_wiki_links({str(k): str(v) for k, v in pre_speakers.items()})
 
     # Load stored JSON
     audio_data_rel = str(doc.frontmatter.get("audio_data", ""))
@@ -113,3 +127,11 @@ def diarize_and_update(
     doc = set_frontmatter(doc, "reanalyze", True)
 
     meeting_path.write_text(doc.to_markdown(), encoding="utf-8")
+
+    # Auto-enroll pre-existing wiki-link speakers if db provided
+    if db is not None and pre_wiki_links:
+        for speaker_id, person_name in pre_wiki_links.items():
+            if not db.has_speaker(person_name):
+                embedding = _embeddings.extract_speaker_embedding(audio_file, diarized_segments, speaker_id)
+                if np.any(embedding):
+                    db.enroll(person_name, embedding)
