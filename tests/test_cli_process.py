@@ -1,7 +1,6 @@
 """Tests for process command reactive pipeline changes."""
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -61,7 +60,7 @@ def test_process_skips_diarize_by_default(tmp_path):
             "processing_time_s": 5.0,
             "segments": [{"start": 0.0, "end": 1.0, "text": "Hi"}],
         }
-        result = runner.invoke(app, ["process", str(audio_file), "-o", str(tmp_path)])
+        runner.invoke(app, ["process", str(audio_file), "-o", str(tmp_path)])
 
     assert mock_pipeline.call_args is not None
 

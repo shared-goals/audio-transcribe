@@ -2,7 +2,7 @@
 
 import textwrap
 
-from audio_transcribe.markdown.parser import MeetingDoc, parse_meeting
+from audio_transcribe.markdown.parser import parse_meeting
 
 
 def test_parse_frontmatter():

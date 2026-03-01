@@ -275,7 +275,9 @@ def test_format_with_speakers():
     assert "Speakers" in doc.sections
     assert doc.frontmatter["speakers"]["SPEAKER_00"] == "Speaker A"
     assert doc.frontmatter["speakers"]["SPEAKER_01"] == "Speaker B"
-    assert "Speaker A" in doc.sections["Transcript"]
+    # Transcript has clean text without speaker prefixes (diarize step adds them)
+    assert "Привет" in doc.sections["Transcript"]
+    assert "Speaker A" not in doc.sections["Transcript"]
 
 
 def test_format_frontmatter_has_audio_file():
