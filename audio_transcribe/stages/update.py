@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +12,8 @@ from audio_transcribe.markdown.parser import parse_meeting, parse_speaker_legend
 from audio_transcribe.markdown.updater import apply_speaker_mapping, extract_wiki_links, set_frontmatter
 from audio_transcribe.speakers import embeddings as _embeddings
 from audio_transcribe.speakers.database import SpeakerDB
+
+logger = logging.getLogger(__name__)
 
 
 def update_meeting(meeting_path: Path, db: SpeakerDB) -> None:
@@ -45,12 +48,16 @@ def update_meeting(meeting_path: Path, db: SpeakerDB) -> None:
 
     doc = set_frontmatter(doc, "reanalyze", True)
 
+    # Write transcript changes first — enrollment is best-effort
+    meeting_path.write_text(doc.to_markdown(), encoding="utf-8")
+
     # Enroll new wiki-link speakers in voice DB
     wiki_links = extract_wiki_links({str(k): str(v) for k, v in speakers.items()})
     for speaker_id, person_name in wiki_links.items():
         if not db.has_speaker(person_name):
-            embedding = _embeddings.extract_speaker_embedding(audio_file, segments, speaker_id)
-            if np.any(embedding):
-                db.enroll(person_name, embedding)
-
-    meeting_path.write_text(doc.to_markdown(), encoding="utf-8")
+            try:
+                embedding = _embeddings.extract_speaker_embedding(audio_file, segments, speaker_id)
+                if np.any(embedding):
+                    db.enroll(person_name, embedding)
+            except Exception:
+                logger.warning("Could not enroll %s — voice DB skipped", person_name)
