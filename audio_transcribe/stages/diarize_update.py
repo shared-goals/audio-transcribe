@@ -116,7 +116,9 @@ def diarize_and_update(
             speaker = ts_to_speaker[line_ts]
             after_bracket = line.split("] ", 1)
             if len(after_bracket) == 2 and not after_bracket[1].startswith(speaker + ":"):
-                out_line = f"[{line_ts}] {speaker}: {after_bracket[1]}"
+                # Strip any pre-existing speaker prefix before prepending new label
+                text_part = re.sub(r"^(?:Speaker [A-Z]|SPEAKER_\d+|Unknown|None):\s+", "", after_bracket[1])
+                out_line = f"[{line_ts}] {speaker}: {text_part}"
         new_lines.append(out_line)
     transcript_content = "\n".join(new_lines)
 

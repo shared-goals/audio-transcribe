@@ -156,11 +156,11 @@ def format_meeting_note(data: dict[str, Any], audio_data_path: str) -> str:
             lines.append(f"- **{label}**: {speaker_id}")
         lines.append("")
 
-    # Transcript
+    # Transcript — no speaker prefixes; diarize step adds them after speaker ID
     lines.append("## Transcript")
     lines.append("")
     for seg in segments:
-        lines.append(format_segment(seg, legend if has_speakers else None))
+        lines.append(format_segment(seg, None))
     lines.append("")
 
     return "\n".join(lines)
