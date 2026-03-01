@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import subprocess
 from typing import Any
 
 import numpy as np
@@ -34,17 +35,41 @@ def _get_model() -> Any:
     )
 
 
-def extract_embedding(audio_path: str, start: float, end: float) -> NDArray[np.float32]:
-    """Extract speaker embedding from an audio segment using pyannote wespeaker model."""
+def _load_audio_ffmpeg(audio_path: str, sample_rate: int = 16000) -> dict[str, Any]:
+    """Decode audio to a torch tensor dict via ffmpeg.
+
+    Returns {'waveform': (1, samples) float32 tensor, 'sample_rate': int}.
+    Uses ffmpeg directly to avoid the torchcodec/AudioDecoder incompatibility.
+    """
+    import torch
+
+    proc = subprocess.run(
+        ["ffmpeg", "-y", "-i", audio_path, "-ar", str(sample_rate), "-ac", "1", "-f", "f32le", "-"],
+        capture_output=True,
+        check=True,
+    )
+    data = np.frombuffer(proc.stdout, dtype=np.float32).copy()
+    waveform = torch.from_numpy(data).unsqueeze(0)  # (1, samples)
+    return {"waveform": waveform, "sample_rate": sample_rate}
+
+
+def extract_embedding(
+    audio: str | dict[str, Any], start: float, end: float
+) -> NDArray[np.float32]:
+    """Extract speaker embedding from an audio segment using pyannote wespeaker model.
+
+    audio: path string (decoded via ffmpeg) or preloaded {'waveform': tensor, 'sample_rate': int}.
+    """
     from pyannote.audio import Inference
     from pyannote.core import Segment
 
+    audio_input: dict[str, Any] = _load_audio_ffmpeg(audio) if isinstance(audio, str) else audio
     model = _get_model()
     inference = Inference(model, window="whole")
     segment = Segment(start, end)
-    embedding = inference.crop(audio_path, segment)
-    result: NDArray[np.float32] = np.array(embedding, dtype=np.float32).flatten()
-    return result
+    embedding = inference.crop(audio_input, segment)
+    arr: NDArray[np.float32] = np.array(embedding, dtype=np.float32).flatten()
+    return arr
 
 
 def extract_speaker_embedding(
@@ -59,12 +84,15 @@ def extract_speaker_embedding(
         logger.warning("Speaker %s has no segments, skipping embedding extraction", speaker_id)
         return np.zeros(256, dtype=np.float32)
 
+    # Preload audio once for all segments to avoid repeated ffmpeg decoding
+    audio_preloaded = _load_audio_ffmpeg(audio_file)
+
     embeddings = []
     for seg in speaker_segs:
         start = float(seg.get("start", 0.0))
         end = float(seg.get("end", 0.0))
         if end - start >= min_duration:
-            emb = extract_embedding(audio_file, start, end)
+            emb = extract_embedding(audio_preloaded, start, end)
             embeddings.append(emb)
 
     if not embeddings:
