@@ -194,8 +194,9 @@ def test_format_transcript_with_segments():
     md = format_transcript(_make_data(segs))
     assert "speakers: 2" in md
     assert "## Speakers" in md
-    assert "**Speaker A**: SPEAKER_00" in md
-    assert "**Speaker B**: SPEAKER_01" in md
+    assert "SPEAKER_00: Speaker A" in md
+    assert "SPEAKER_01: Speaker B" in md
+    assert "**Speaker A**: SPEAKER_00" not in md
     assert "[00:00] Speaker A: Привет" in md
     assert "[00:03] Speaker B: Мир" in md
 
@@ -278,6 +279,24 @@ def test_format_with_speakers():
     # Transcript has clean text without speaker prefixes (diarize step adds them)
     assert "Привет" in doc.sections["Transcript"]
     assert "Speaker A" not in doc.sections["Transcript"]
+
+
+def test_format_with_speakers_legend_format():
+    """Speakers section uses 'SPEAKER_ID: label' format (ID first)."""
+    data = {
+        "audio_file": "meeting.wav",
+        "language": "ru",
+        "model": "large-v3",
+        "processing_time_s": 10.0,
+        "segments": [
+            {"start": 0.0, "end": 2.5, "text": "Привет", "speaker": "SPEAKER_00"},
+            {"start": 2.5, "end": 5.0, "text": "Пока", "speaker": "SPEAKER_01"},
+        ],
+    }
+    result = format_meeting_note(data, audio_data_path=".audio-data/meeting.json")
+    assert "SPEAKER_00: Speaker A" in result
+    assert "SPEAKER_01: Speaker B" in result
+    assert "**Speaker A**: SPEAKER_00" not in result
 
 
 def test_format_frontmatter_has_audio_file():

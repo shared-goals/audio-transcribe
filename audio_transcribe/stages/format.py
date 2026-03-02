@@ -90,7 +90,7 @@ def format_transcript(data: dict[str, Any]) -> str:
         lines.append("## Speakers")
         lines.append("")
         for speaker_id, label in legend.items():
-            lines.append(f"- **{label}**: {speaker_id}")
+            lines.append(f"- {speaker_id}: {label}")
         lines.append("")
 
     # Transcript
@@ -153,7 +153,7 @@ def format_meeting_note(data: dict[str, Any], audio_data_path: str) -> str:
         lines.append("## Speakers")
         lines.append("")
         for speaker_id, label in legend.items():
-            lines.append(f"- **{label}**: {speaker_id}")
+            lines.append(f"- {speaker_id}: {label}")
         lines.append("")
 
     # Transcript — no speaker prefixes; diarize step adds them after speaker ID
