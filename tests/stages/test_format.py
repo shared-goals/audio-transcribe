@@ -82,6 +82,15 @@ def test_build_speaker_legend_no_speaker_key():
     assert legend == {}
 
 
+def test_build_speaker_legend_27_speakers():
+    """Labels should use double letters after Z."""
+    segments = [{"speaker": f"SPEAKER_{i:02d}", "text": "x"} for i in range(27)]
+    legend = build_speaker_legend(segments)
+    assert legend["SPEAKER_00"] == "Speaker A"
+    assert legend["SPEAKER_25"] == "Speaker Z"
+    assert legend["SPEAKER_26"] == "Speaker AA"
+
+
 def test_build_speaker_legend_three_speakers():
     segs = [
         {"speaker": "SPEAKER_00"},
