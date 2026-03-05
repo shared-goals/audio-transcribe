@@ -36,30 +36,33 @@ ok()    { printf '\033[1;32m✓\033[0m %s\n' "$1" }
 err()   { printf '\033[1;31m✗\033[0m %s\n' "$1" }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR" EXIT
+WORK_DIR=$(mktemp -d)
+CLONE="$WORK_DIR/repo"
+trap "rm -rf $WORK_DIR" EXIT
 
 info "Creating clean clone..."
-git clone --single-branch --branch "$BRANCH" "$REPO_ROOT" "$TMPDIR/repo" --quiet
+git clone --single-branch --branch "$BRANCH" "$REPO_ROOT" "$CLONE" --quiet
 
-cd "$TMPDIR/repo"
+# Configure git in clone
+git -C "$CLONE" config user.name "mirror-bot"
+git -C "$CLONE" config user.email "mirror-bot@noreply"
 
 info "Removing excluded paths..."
-for path in "${EXCLUDE_PATHS[@]}"; do
-    if [ -e "$path" ]; then
-        git rm -rf "$path" --quiet 2>/dev/null || true
-        ok "Removed $path"
+for p in "${EXCLUDE_PATHS[@]}"; do
+    if [ -e "$CLONE/$p" ]; then
+        rm -rf "$CLONE/$p"
+        ok "Removed $p"
     fi
 done
 
-# Commit the removals
-git commit --quiet -m "mirror: remove private files" --allow-empty
+# Amend the tip commit to exclude private files (no extra mirror commit)
+git -C "$CLONE" add -A
+git -C "$CLONE" commit --quiet --amend --no-edit
 
 info "Scanning for PII leaks..."
 FOUND_PII=0
 for pattern in "${PII_PATTERNS[@]}"; do
-    # Search tracked files only (exclude .git)
-    MATCHES=$(grep -rn --include='*.py' --include='*.sh' --include='*.md' --include='*.toml' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.txt' -E "$pattern" . 2>/dev/null | grep -v '\.git/' || true)
+    MATCHES=$(grep -rn --include='*.py' --include='*.sh' --include='*.md' --include='*.toml' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.txt' -E "$pattern" "$CLONE" 2>/dev/null | grep -v '\.git/' || true)
     if [ -n "$MATCHES" ]; then
         err "PII pattern '$pattern' found:"
         echo "$MATCHES" | head -10
@@ -74,7 +77,8 @@ fi
 ok "PII scan clean"
 
 info "Pushing to GitHub..."
-git remote add github "$GITHUB_REMOTE"
-git push github "$BRANCH" --force
+git -C "$CLONE" remote add github "$GITHUB_REMOTE"
+git -C "$CLONE" push github "$BRANCH" --force
+git -C "$CLONE" push github --tags --force
 
 ok "Mirrored to $GITHUB_REMOTE"
