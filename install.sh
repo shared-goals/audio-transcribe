@@ -1,6 +1,13 @@
 #!/bin/zsh
 # Installer for audio-transcribe
 # Usage: curl -fsSL https://raw.githubusercontent.com/shared-goals/audio-transcribe/main/install.sh | zsh
+#
+# When piped via curl, re-exec from a temp file to avoid stdin interleaving.
+if [[ ! -f "$0" || "$0" == "zsh" ]]; then
+    _tmp=$(mktemp)
+    cat > "$_tmp"
+    exec zsh "$_tmp"
+fi
 set -e
 
 REPO_URL="https://github.com/shared-goals/audio-transcribe.git"
@@ -47,7 +54,7 @@ fi
 
 # --- 4. Install audio-transcribe ---
 info "Installing audio-transcribe..."
-uv tool install "git+${REPO_URL}"
+uv tool install --python 3.12 "git+${REPO_URL}"
 ok "audio-transcribe installed"
 
 # --- 5. PATH setup ---
