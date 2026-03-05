@@ -97,21 +97,24 @@ audio-transcribe learn corrected-transcript.md
 ## Package Structure
 
 `audio_transcribe/` Python package:
-- `stages/` — preprocess, transcribe, align, diarize, format, correct, diarize_update, identify, update
+- `stages/` — preprocess, transcribe, align, diarize, format, correct, diarize_update, identify, update, loader
 - `markdown/` — parser (MeetingDoc), updater (sections, frontmatter, speaker mapping)
 - `speakers/` — embeddings (pyannote wespeaker), database (file-based voice DB)
-- `progress/` — events, json_reporter (JSONL), tui (rich.live)
+- `progress/` — events, json_reporter (JSONL), tui (rich.live), composite
 - `stats/` — store (history.json), estimator (ETA), recommender, hardware
 - `quality/` — scorecard (graded quality metrics)
+- `preflight.py` — pre-flight validation (ffmpeg, input file, HF_TOKEN)
+- `util.py` — atomic file writes (crash-safe)
+- `log.py` — centralized logging configuration
 
 ## Current Phase & Roadmap
 
-**Phases 1–4** — complete. **Phase 5 (Enhancements)** — active (~90%).
+**Phases 1–4** — complete. **Phase 5 (Enhancements)** — active (~95%).
 
-Completed: unified CLI, reactive pipeline, task extraction, people cards, speakers legend, auto-diarization, meetings index.
+Completed: unified CLI, reactive pipeline, task extraction, people cards, speakers legend, auto-diarization, meetings index, pipeline hardening.
 
 Remaining:
-- **Phase 5**: File watcher, error handling, template system
+- **Phase 5**: File watcher, template system
 - **Phase 6**: Local LLM fallback — Ollama/Gemma offline pipeline
 
 Vault lives at `/Users/gnezim/_projects/gnezim/knowledge/`. Project spec at `knowledge/projects/personal/audio-transcribe/`.
