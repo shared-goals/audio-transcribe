@@ -61,6 +61,11 @@ def diarize_and_update(
     If db is provided and frontmatter has [[wiki-link]] speakers, enroll them.
     """
     md_text = meeting_path.read_text(encoding="utf-8")
+
+    # Backup before overwrite
+    bak_path = meeting_path.with_suffix(".md.bak")
+    bak_path.write_text(md_text, encoding="utf-8")
+
     doc = parse_meeting(md_text)
 
     # Check if already diarized
