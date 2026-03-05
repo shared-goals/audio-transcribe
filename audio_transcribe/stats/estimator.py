@@ -25,13 +25,17 @@ def estimate_stage(
     (different backends have very different performance characteristics).
     Returns None if fewer than 3 relevant data points exist.
     """
-    # Filter records that have this stage (and matching backend if specified)
+    # Filter records that have this stage (prefer same backend, fall back to all)
     points: list[tuple[float, float]] = []
-    for r in history:
-        if stage in r.stages:
-            if backend and r.config.backend != backend:
-                continue
-            points.append((r.input.duration_s, r.stages[stage].time_s))
+    if backend:
+        for r in history:
+            if stage in r.stages and r.config.backend == backend:
+                points.append((r.input.duration_s, r.stages[stage].time_s))
+    if len(points) < 3:
+        points = []
+        for r in history:
+            if stage in r.stages:
+                points.append((r.input.duration_s, r.stages[stage].time_s))
 
     if len(points) < 3:
         return None

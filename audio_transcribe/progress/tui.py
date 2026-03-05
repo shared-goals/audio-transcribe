@@ -120,6 +120,7 @@ class TuiReporter:
             refresh_per_second=4,
         )
         self._live.start()
+        self._live.refresh()
 
     def on_stage_start(self, event: StageStart) -> None:
         """Update live display to show stage as running."""
