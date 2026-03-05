@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-05
+
+### Added
+- HF_TOKEN fallback: sync token bidirectionally with `~/.cache/huggingface/token` so GUI-launched processes (Obsidian/Claudian) can access it
+
 ### Changed
 - Installer: harden with `set -eo pipefail`, dependency checks, trap cleanup on INT/TERM, idempotent PATH setup, `ZDOTDIR` support, shadowed binary detection, version pinning (`AUDIO_TRANSCRIBE_VERSION`), already-installed skip, quiet mode (`QUIET=1`), and precise `HF_TOKEN` grep
 
