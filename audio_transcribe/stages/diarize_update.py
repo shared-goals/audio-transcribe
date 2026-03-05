@@ -13,6 +13,7 @@ from audio_transcribe.markdown.parser import parse_meeting
 from audio_transcribe.markdown.updater import extract_wiki_links, replace_section, set_frontmatter
 from audio_transcribe.speakers import embeddings as _embeddings
 from audio_transcribe.stages.format import build_speaker_legend, format_time
+from audio_transcribe.stages.loader import load_audio_data
 
 if TYPE_CHECKING:
     from audio_transcribe.speakers.database import SpeakerDB
@@ -75,9 +76,8 @@ def diarize_and_update(
         pre_wiki_links = extract_wiki_links({str(k): str(v) for k, v in pre_speakers.items()})
 
     # Load stored JSON
-    audio_data_rel = str(doc.frontmatter.get("audio_data", ""))
-    json_path = meeting_path.parent / audio_data_rel
-    stored = json.loads(json_path.read_text(encoding="utf-8"))
+    stored = load_audio_data(meeting_path, doc)
+    json_path = meeting_path.parent / str(doc.frontmatter.get("audio_data", ""))
 
     audio_file: str = audio_file_override if audio_file_override is not None else str(
         doc.frontmatter.get("audio_file", stored.get("audio_file", ""))

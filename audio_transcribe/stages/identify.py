@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -11,6 +10,7 @@ from audio_transcribe.markdown.parser import parse_meeting
 from audio_transcribe.markdown.updater import apply_speaker_mapping, set_frontmatter
 from audio_transcribe.speakers import embeddings as _embeddings
 from audio_transcribe.speakers.database import SpeakerDB
+from audio_transcribe.stages.loader import load_audio_data
 
 
 @dataclass
@@ -33,9 +33,7 @@ def identify_speakers(
     doc = parse_meeting(md_text)
 
     # Load stored JSON
-    audio_data_rel = str(doc.frontmatter.get("audio_data", ""))
-    json_path = meeting_path.parent / audio_data_rel
-    stored: dict[str, Any] = json.loads(json_path.read_text(encoding="utf-8"))
+    stored = load_audio_data(meeting_path, doc)
     audio_file = audio_file_override if audio_file_override is not None else str(
         doc.frontmatter.get("audio_file", stored.get("audio_file", ""))
     )

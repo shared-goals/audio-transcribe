@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -12,6 +11,7 @@ from audio_transcribe.markdown.parser import parse_meeting, parse_speaker_legend
 from audio_transcribe.markdown.updater import apply_speaker_mapping, extract_wiki_links, set_frontmatter
 from audio_transcribe.speakers import embeddings as _embeddings
 from audio_transcribe.speakers.database import SpeakerDB
+from audio_transcribe.stages.loader import load_audio_data
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +26,7 @@ def update_meeting(meeting_path: Path, db: SpeakerDB) -> None:
         return
 
     # Load stored JSON for enrollment
-    audio_data_rel = str(doc.frontmatter.get("audio_data", ""))
-    json_path = meeting_path.parent / audio_data_rel
-    stored: dict[str, object] = json.loads(json_path.read_text(encoding="utf-8"))
+    stored = load_audio_data(meeting_path, doc)
     audio_file = str(doc.frontmatter.get("audio_file", stored.get("audio_file", "")))
     raw_segments = stored.get("segments", [])
     segments: list[dict[str, object]] = raw_segments if isinstance(raw_segments, list) else []
