@@ -161,3 +161,47 @@ def test_diarize_preserves_user_text_edits(tmp_path):
     assert "Добрый день всем" in result
     assert "Speaker A:" in result
     assert "Speaker B:" in result
+
+
+def test_diarize_timestamp_collision(tmp_path):
+    """Segments within the same second should get correct speaker labels."""
+    md_content = textwrap.dedent("""\
+        ---
+        title: 2026-03-05 meeting
+        date: '2026-03-05'
+        reanalyze: false
+        audio_file: meeting.wav
+        audio_data: .audio-data/meeting.json
+        ---
+
+        ## Transcript
+
+        [01:40] First utterance
+        [01:40] Second utterance
+    """)
+    meeting_md = tmp_path / "meetings" / "meeting.md"
+    meeting_md.parent.mkdir(parents=True)
+    meeting_md.write_text(md_content)
+
+    stored_json = {
+        "audio_file": "meeting.wav",
+        "segments": [
+            {"start": 100.0, "end": 100.4, "text": "First utterance"},
+            {"start": 100.5, "end": 101.0, "text": "Second utterance"},
+        ],
+    }
+    audio_data_dir = tmp_path / "meetings" / ".audio-data"
+    audio_data_dir.mkdir(parents=True)
+    (audio_data_dir / "meeting.json").write_text(json.dumps(stored_json))
+
+    diarized_segments = [
+        {"start": 100.0, "end": 100.4, "text": "First utterance", "speaker": "SPEAKER_00"},
+        {"start": 100.5, "end": 101.0, "text": "Second utterance", "speaker": "SPEAKER_01"},
+    ]
+
+    with patch("audio_transcribe.stages.diarize_update.run_diarization", return_value=diarized_segments):
+        diarize_and_update(meeting_md, force=True)
+
+    result = meeting_md.read_text()
+    assert "Speaker A: First utterance" in result
+    assert "Speaker B: Second utterance" in result
