@@ -1,6 +1,6 @@
 # audio-transcribe
 
-Local audio transcription pipeline that processes recorded meetings into structured Obsidian notes. Runs entirely on MacBook Air M4 (24 GB RAM) with no cloud APIs.
+Local audio transcription pipeline that processes recorded meetings into structured Obsidian notes. Runs entirely on macOS with no cloud APIs.
 
 ## Pipeline
 
