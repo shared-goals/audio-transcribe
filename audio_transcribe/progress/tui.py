@@ -13,7 +13,7 @@ from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
-from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageStart
+from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageError, StageStart
 
 
 def _current_rss_mb() -> float:
@@ -108,6 +108,15 @@ class TuiReporter:
         )
         self._current_stage = None
         self._current_eta = None
+        if self._live:
+            self._live.update(self._make_renderable())
+
+    def on_stage_error(self, event: StageError) -> None:
+        """Mark stage as failed and update display."""
+        self._stages_done.append(
+            {"stage": event.stage, "time_s": event.time_s, "peak_rss_mb": 0, "error": event.error}
+        )
+        self._current_stage = None
         if self._live:
             self._live.update(self._make_renderable())
 

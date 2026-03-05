@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from audio_transcribe.models import Config, InputInfo, RunRecord, StageStats
-from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageStart
+from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageError, StageStart
 from audio_transcribe.stages.correct import apply_corrections, load_corrections
 from audio_transcribe.stages.format import format_transcript
 from audio_transcribe.stages.preprocess import preprocess as preprocess_stage
@@ -71,6 +71,15 @@ def _current_rss_mb() -> float:
     if sys.platform == "darwin":
         return usage.ru_maxrss / (1024 * 1024)
     return usage.ru_maxrss / 1024
+
+
+class PipelineError(Exception):
+    """Pipeline failure with stage context."""
+
+    def __init__(self, message: str, stage: str | None = None, elapsed_s: float = 0.0) -> None:
+        self.stage = stage
+        self.elapsed_s = elapsed_s
+        super().__init__(message)
 
 
 @dataclass
@@ -202,10 +211,18 @@ class Pipeline:
         return result_dict
 
     def _run_stage(self, name: str, fn: Any) -> Any:
-        """Run a stage with timing and event emission."""
+        """Run a stage with timing, event emission, and error wrapping."""
         self.reporter.on_stage_start(StageStart(stage=name, eta_s=None))
         t = time.time()
-        result = fn()
+        try:
+            result = fn()
+        except Exception as e:
+            elapsed = time.time() - t
+            if hasattr(self.reporter, "on_stage_error"):
+                self.reporter.on_stage_error(
+                    StageError(stage=name, error=str(e), time_s=round(elapsed, 1))
+                )
+            raise PipelineError(f"{name} failed: {e}", stage=name, elapsed_s=elapsed) from e
         elapsed = time.time() - t
         self.reporter.on_stage_complete(
             StageComplete(stage=name, time_s=round(elapsed, 1), peak_rss_mb=round(_current_rss_mb(), 0))
