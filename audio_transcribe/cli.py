@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+import warnings
 from pathlib import Path
 from typing import Optional
 
 import typer
+
+# Suppress harmless warnings from torchcodec and Lightning before any ML imports
+warnings.filterwarnings("ignore", message=r"(?s).*torchcodec", category=UserWarning)
+warnings.filterwarnings("ignore", message=r"(?s).*Lightning automatically upgraded", category=UserWarning)
+
+# Suppress noisy tqdm progress bars from huggingface_hub file downloads
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 app = typer.Typer(name="audio-transcribe", help="Local audio transcription pipeline.")
 
@@ -22,8 +31,10 @@ _DEFAULT_CORRECTIONS = Path.home() / ".audio-transcribe" / "corrections.yaml"
 def main(verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging")) -> None:
     """Local audio transcription pipeline."""
     from audio_transcribe.log import configure
+    from audio_transcribe.update import check_for_update
 
     configure(verbose=verbose)
+    check_for_update()
 
 
 @app.command()
@@ -32,9 +43,9 @@ def process(
     language: str = typer.Option("ru", "-l", "--language", help="Language code"),
     model: str = typer.Option("large-v3", "-m", "--model", help="Whisper model size"),
     backend: str = typer.Option(
-        "whisperx",
+        "mlx-vad",
         "--backend",
-        help="Transcription backend: whisperx (CPU), mlx, mlx-vad (Apple Silicon)",
+        help="Transcription backend: mlx-vad (Apple Silicon, default), mlx, whisperx (CPU)",
     ),
     min_speakers: int = typer.Option(2, "--min-speakers", help="Minimum speakers for diarization"),
     max_speakers: int = typer.Option(6, "--max-speakers", help="Maximum speakers for diarization"),
@@ -76,6 +87,7 @@ def process(
         corrections_path=str(_DEFAULT_CORRECTIONS),
         reporter=reporter,
         stats_store=store,
+        estimator_history=store.load(),
     )
 
     # Determine output directory
@@ -97,6 +109,11 @@ def process(
     # Optional legacy transcript
     if transcript:
         transcript.write_text(format_transcript(result), encoding="utf-8")
+
+    if not json_mode and sys.stdout.isatty():
+        typer.echo(f"Meeting note: {md_path}", err=True)
+        if transcript:
+            typer.echo(f"Transcript:   {transcript}", err=True)
 
 
 @app.command()
@@ -162,7 +179,7 @@ def stats(
     table.add_column("Backend")
 
     for r in records:
-        date = r.id[:16].replace("T", " ")
+        date = r.id[:16].replace("T", " ") if r.id[:4].isdigit() else r.id[:12]
         dur = f"{r.input.duration_s:.0f}s"
         total = f"{r.total_time_s:.1f}s"
         ratio = f"{r.realtime_ratio:.2f}x"
@@ -366,6 +383,19 @@ def speakers_forget(
 
     db.forget(name)
     typer.echo(f"Removed: {name}")
+
+
+@app.command("self-update")
+def self_update() -> None:
+    """Force an immediate upgrade to the latest version."""
+    from audio_transcribe.update import force_upgrade
+
+    typer.echo("Upgrading audio-transcribe...")
+    if force_upgrade():
+        typer.echo("Done.")
+    else:
+        typer.echo("Upgrade failed. Check your network connection.", err=True)
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

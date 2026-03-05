@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import resource
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -28,6 +30,8 @@ from audio_transcribe.stages.transcribe import (
 from audio_transcribe.stages.transcribe import (
     transcribe_mlx_vad as _transcribe_mlx_vad,
 )
+
+logger = logging.getLogger(__name__)
 
 # Stage function aliases for easy mocking in tests
 preprocess_stage = preprocess_stage
@@ -73,6 +77,22 @@ def _current_rss_mb() -> float:
     return usage.ru_maxrss / 1024
 
 
+def _probe_duration(audio_file: str) -> float:
+    """Get audio duration in seconds via ffprobe. Returns 0.0 on failure."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", audio_file,
+            ],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        return float(result.stdout.strip())
+    except (ValueError, FileNotFoundError, subprocess.TimeoutExpired):
+        logger.debug("Could not probe audio duration for %s", audio_file)
+        return 0.0
+
+
 class PipelineError(Exception):
     """Pipeline failure with stage context."""
 
@@ -115,6 +135,7 @@ class Pipeline:
         self.estimator_history = estimator_history or []
         self._stage_stats: dict[str, StageStats] = {}
         self._corrections_applied: int = 0
+        self._audio_duration_s: float = 0.0
 
     def run(self, config: PipelineConfig) -> dict[str, Any]:
         """Execute the full pipeline."""
@@ -126,11 +147,25 @@ class Pipeline:
         if not preflight.ok:
             raise PipelineError("\n".join(preflight.errors))
 
+        # Get audio duration for ETA estimation and TUI display
+        self._audio_duration_s = _probe_duration(config.audio_file)
+
         # Emit pipeline start
         cfg_dict = {"model": config.model, "backend": config.backend}
         self.reporter.on_pipeline_start(
-            PipelineStart(file=config.audio_file, duration_s=0.0, config=cfg_dict)
+            PipelineStart(file=config.audio_file, duration_s=self._audio_duration_s, config=cfg_dict)
         )
+
+        try:
+            return self._run_stages(config, t0)
+        except KeyboardInterrupt:
+            # Ensure TUI Live display is stopped so terminal is restored
+            if hasattr(self.reporter, "_live") and self.reporter._live:
+                self.reporter._live.stop()
+            raise
+
+    def _run_stages(self, config: PipelineConfig, t0: float) -> dict[str, Any]:
+        """Execute all pipeline stages."""
 
         # Stage 1: Preprocess
         clean_path = self._run_stage(
@@ -221,9 +256,18 @@ class Pipeline:
         result_dict: dict[str, Any] = output
         return result_dict
 
+    def _estimate_eta(self, stage: str) -> float | None:
+        """Estimate stage ETA from history, or None if insufficient data."""
+        if not self.estimator_history or self._audio_duration_s <= 0:
+            return None
+        from audio_transcribe.stats.estimator import estimate_stage
+
+        est = estimate_stage(stage, self._audio_duration_s, self.estimator_history)
+        return est.eta_s if est else None
+
     def _run_stage(self, name: str, fn: Any) -> Any:
         """Run a stage with timing, event emission, and error wrapping."""
-        self.reporter.on_stage_start(StageStart(stage=name, eta_s=None))
+        self.reporter.on_stage_start(StageStart(stage=name, eta_s=self._estimate_eta(name)))
         t = time.time()
         try:
             result = fn()
@@ -298,6 +342,7 @@ def run_pipeline(
     corrections_path: str | None = None,
     reporter: Any = None,
     stats_store: Any = None,
+    estimator_history: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Run pipeline and return output dict. Output file handling is the caller's responsibility."""
     config = PipelineConfig(
@@ -313,5 +358,5 @@ def run_pipeline(
         corrections_path=corrections_path,
         suppress_stdout_json=True,
     )
-    p = Pipeline(reporter=reporter, stats_store=stats_store)
+    p = Pipeline(reporter=reporter, stats_store=stats_store, estimator_history=estimator_history)
     return p.run(config)

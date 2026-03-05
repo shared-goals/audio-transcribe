@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "audio-transcribe"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local audio transcription pipeline: WhisperX + Ollama"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,15 +15,22 @@ dependencies = [
     "rich>=13.0.0",
     "pyyaml>=6.0",
     "numpy>=1.26.0",
+    "mlx-whisper>=0.4.0",
+]
+
+# Exclude torchcodec: pyannote-audio pulls it but we only do audio (not video).
+# pyannote falls back to torchaudio when torchcodec is unavailable.
+[tool.uv]
+override-dependencies = [
+    "torchcodec; python_version < '0'",
+]
+# Also for uv tool install contexts
+constraint-dependencies = [
+    "torchcodec; python_version < '0'",
 ]
 
 [project.scripts]
 audio-transcribe = "audio_transcribe.cli:app"
-
-[project.optional-dependencies]
-mlx = [
-    "mlx-whisper>=0.4.0",
-]
 
 [dependency-groups]
 dev = [
