@@ -12,6 +12,14 @@ from audio_transcribe.stages.identify import identify_speakers
 from audio_transcribe.stages.update import update_meeting
 
 
+def _embedding(*values: float) -> np.ndarray:
+    """Create a 256-dim embedding with given values in first positions."""
+    e = np.zeros(256, dtype=np.float32)
+    for i, v in enumerate(values):
+        e[i] = v
+    return e
+
+
 def test_identify_matches_enrolled_speaker_from_previous_meeting(tmp_path):
     """Speakers enrolled from meeting 1 are identified in meeting 2."""
     db_dir = tmp_path / "speakers"
@@ -43,7 +51,7 @@ def test_identify_matches_enrolled_speaker_from_previous_meeting(tmp_path):
     content = content.replace("SPEAKER_00: Speaker A", 'SPEAKER_00: "[[Andrey]]"')
     m1_path.write_text(content)
 
-    andrey_embedding = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    andrey_embedding = _embedding(1.0)
     with patch("audio_transcribe.speakers.embeddings.extract_speaker_embedding", return_value=andrey_embedding):
         update_meeting(m1_path, db)
 
@@ -71,7 +79,7 @@ def test_identify_matches_enrolled_speaker_from_previous_meeting(tmp_path):
     m2_path.write_text(m2_md)
 
     # Identify should match SPEAKER_00 → Andrey (embedding close to [1,0,0])
-    similar_embedding = np.array([0.95, 0.05, 0.0], dtype=np.float32)
+    similar_embedding = _embedding(0.95, 0.05)
     with patch("audio_transcribe.speakers.embeddings.extract_speaker_embedding", return_value=similar_embedding):
         result = identify_speakers(m2_path, db)
 

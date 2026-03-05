@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date
 from pathlib import Path
 
@@ -10,6 +11,10 @@ import numpy as np
 from numpy.typing import NDArray
 
 from audio_transcribe.speakers.embeddings import cosine_distance
+
+logger = logging.getLogger(__name__)
+
+_EMBEDDING_DIM = 256
 
 
 class SpeakerDB:
@@ -50,6 +55,9 @@ class SpeakerDB:
 
     def enroll(self, name: str, embedding: NDArray[np.float32]) -> None:
         """Add or update a speaker's embedding. Averages with existing if present."""
+        if embedding.shape != (_EMBEDDING_DIM,):
+            msg = f"Expected embedding dimension ({_EMBEDDING_DIM},), got {embedding.shape}"
+            raise ValueError(msg)
         key = self._normalize(name)
         if key in self._index:
             existing = self.get_embedding(name)
@@ -83,6 +91,12 @@ class SpeakerDB:
         results: list[tuple[str, float]] = []
         for key, meta in self._index.items():
             stored = np.load(self._dir / str(meta["file"])).astype(np.float32)
+            if stored.shape != (_EMBEDDING_DIM,):
+                logger.warning(
+                    "Skipping speaker %s: embedding shape %s, expected (%d,)",
+                    key, stored.shape, _EMBEDDING_DIM,
+                )
+                continue
             dist = cosine_distance(query, stored)
             if dist < threshold:
                 display_name = str(meta.get("display_name", key))
