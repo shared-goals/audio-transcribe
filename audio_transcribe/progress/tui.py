@@ -64,7 +64,7 @@ class TuiReporter:
         """Build the current live renderable from pipeline state."""
         lines: list[RenderableType] = []
 
-        # Header: filename + config
+        # Header: filename + config (always 3 lines for stable height)
         if self._pipeline_start:
             fname = Path(self._pipeline_start.file).name
             dur_s = self._pipeline_start.duration_s
@@ -75,6 +75,8 @@ class TuiReporter:
             backend = cfg.get("backend", "")
             lines.append(Text.from_markup(f"[dim]  {backend} / {model}[/]"))
             lines.append(Text(""))
+        else:
+            lines.extend([Text(""), Text(""), Text("")])
 
         # Completed stages
         for s in self._stages_done:
@@ -94,9 +96,12 @@ class TuiReporter:
             lines.append(self._spinner)
 
         # Pad to fixed height to prevent Rich Live from leaving artifacts
+        # Total fixed height = 3 (header) + _MAX_STAGES (stage rows)
+        n_header = 3 if self._pipeline_start else 0
         n_done = len(self._stages_done)
         n_active = 1 if self._current_stage else 0
-        padding = _MAX_STAGES - n_done - n_active
+        target_height = 3 + _MAX_STAGES
+        padding = target_height - n_header - n_done - n_active
         for _ in range(max(0, padding)):
             lines.append(Text(""))
 
