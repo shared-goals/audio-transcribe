@@ -18,6 +18,14 @@ _DEFAULT_HISTORY = Path.home() / ".audio-transcribe" / "history.json"
 _DEFAULT_CORRECTIONS = Path.home() / ".audio-transcribe" / "corrections.yaml"
 
 
+@app.callback()
+def main(verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging")) -> None:
+    """Local audio transcription pipeline."""
+    from audio_transcribe.log import configure
+
+    configure(verbose=verbose)
+
+
 @app.command()
 def process(
     audio_file: Path = typer.Argument(..., help="Input audio file (WAV, M4A, MP3)"),

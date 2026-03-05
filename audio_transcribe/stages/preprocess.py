@@ -3,9 +3,11 @@
 Converts any audio format to 16kHz mono PCM WAV.
 """
 
+import logging
 import subprocess
-import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def preprocess(
@@ -34,12 +36,12 @@ def preprocess(
     filters.append("aresample=16000,aformat=sample_fmts=s16:channel_layouts=mono")
 
     cmd = ["ffmpeg", "-y", "-i", input_path, "-af", ",".join(filters), output_path]
-    print(f"Preprocessing: {input_path} → {output_path}", file=sys.stderr)
+    logger.info("Preprocessing: %s → %s", input_path, output_path)
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     if proc.returncode != 0:
-        print(proc.stderr, file=sys.stderr)
+        logger.error("FFmpeg error: %s", proc.stderr)
         raise RuntimeError("FFmpeg failed")
 
     size_mb = Path(output_path).stat().st_size / 1_048_576
-    print(f"Done: {output_path} ({size_mb:.1f} MB)", file=sys.stderr)
+    logger.info("Done: %s (%.1f MB)", output_path, size_mb)
     return output_path
