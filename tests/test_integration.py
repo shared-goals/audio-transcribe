@@ -27,7 +27,7 @@ _MOCK_OUTPUT = {
 def test_process_json_mode_with_mock(tmp_path, monkeypatch):
     """End-to-end process command with mocked ML stages verifies JSON output format."""
     audio = tmp_path / "test.wav"
-    audio.touch()
+    audio.write_bytes(b"\x00" * 1024)
     output_dir = tmp_path / "output"
     output_dir.mkdir()
 
@@ -64,7 +64,7 @@ def test_process_json_mode_with_mock(tmp_path, monkeypatch):
 def test_process_with_transcript_output(tmp_path, monkeypatch):
     """Process command should write a Markdown transcript when --transcript is given."""
     audio = tmp_path / "test.wav"
-    audio.touch()
+    audio.write_bytes(b"\x00" * 1024)
     output_dir = tmp_path / "output"
     output_dir.mkdir()
     transcript = tmp_path / "transcript.md"

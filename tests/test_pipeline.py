@@ -5,8 +5,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from audio_transcribe.pipeline import Pipeline, PipelineConfig, PipelineError
+from audio_transcribe.preflight import PreflightResult
 from audio_transcribe.progress.events import StageStart
 from audio_transcribe.stats.store import StatsStore
+
+_PREFLIGHT_OK = PreflightResult()  # no errors, no warnings
 
 # Common patches for all pipeline tests — mock all external stages
 _STAGE_PATCHES = {
@@ -65,6 +68,7 @@ def test_pipeline_emits_events():
     pipeline = Pipeline(reporter=reporter)
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=_STAGE_PATCHES["preprocess_stage"]),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
         patch("audio_transcribe.pipeline.align_stage", return_value=_STAGE_PATCHES["align_stage"]),
@@ -93,6 +97,7 @@ def test_pipeline_skips_align():
     pipeline = Pipeline(reporter=reporter)
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=_STAGE_PATCHES["preprocess_stage"]),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
         patch("audio_transcribe.pipeline.align_stage") as mock_align,
@@ -115,6 +120,7 @@ def test_pipeline_skips_diarize():
     pipeline = Pipeline(reporter=reporter)
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=_STAGE_PATCHES["preprocess_stage"]),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
         patch("audio_transcribe.pipeline.align_stage", return_value=_STAGE_PATCHES["align_stage"]),
@@ -149,6 +155,7 @@ def test_pipeline_writes_output(tmp_path):
     trans_rv = ({"segments": [seg], "text": "hi", "language": "ru"}, None)
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value="clean.wav"),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=trans_rv),
         patch("audio_transcribe.pipeline.align_stage", return_value={"segments": [seg]}),
@@ -174,6 +181,7 @@ def test_pipeline_writes_transcript(tmp_path):
     transcript_file = tmp_path / "transcript.md"
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=_STAGE_PATCHES["preprocess_stage"]),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
         patch("audio_transcribe.pipeline.align_stage", return_value=_STAGE_PATCHES["align_stage"]),
@@ -195,6 +203,7 @@ def test_pipeline_persists_run_record(tmp_path):
     store = StatsStore(tmp_path / "history.json")
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=_STAGE_PATCHES["preprocess_stage"]),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
         patch("audio_transcribe.pipeline.align_stage", return_value=_STAGE_PATCHES["align_stage"]),
@@ -222,6 +231,7 @@ def test_pipeline_wraps_stage_error():
     reporter.on_stage_error = lambda e: events.append(("stage_error", e))
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch(
             "audio_transcribe.pipeline.preprocess_stage",
             side_effect=FileNotFoundError("test.wav not found"),

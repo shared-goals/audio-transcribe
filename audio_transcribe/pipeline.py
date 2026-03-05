@@ -120,6 +120,12 @@ class Pipeline:
         """Execute the full pipeline."""
         t0 = time.time()
 
+        from audio_transcribe.preflight import check as preflight_check
+
+        preflight = preflight_check(config.audio_file, config.backend, config.skip_diarize)
+        if not preflight.ok:
+            raise PipelineError("\n".join(preflight.errors))
+
         # Emit pipeline start
         cfg_dict = {"model": config.model, "backend": config.backend}
         self.reporter.on_pipeline_start(
