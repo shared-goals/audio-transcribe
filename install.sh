@@ -8,6 +8,7 @@ if [[ ! -f "$0" || "$0" == "zsh" ]]; then
     cat > "$_tmp"
     exec zsh "$_tmp"
 fi
+[[ "$0" == /tmp/* ]] && trap 'rm -f "$0"' EXIT
 set -e
 
 REPO_URL="https://github.com/shared-goals/audio-transcribe.git"

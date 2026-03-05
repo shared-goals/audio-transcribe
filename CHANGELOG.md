@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Fixed
 - Mirror workflow: always checkout main branch on tag push events
+- Installer: clean up temp file after curl-piped re-exec
 
 ## [0.2.1] - 2026-03-05
 
