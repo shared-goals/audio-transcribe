@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Installer for audio-transcribe
-# Usage: curl -fsSL https://git.gnerim.ru/gnezim/audio-transcribe/raw/branch/main/install.sh | zsh
+# Usage: git clone https://git.gnerim.ru/gnezim/audio-transcribe.git /tmp/audio-transcribe && zsh /tmp/audio-transcribe/install.sh
 set -e
 
 REPO_URL="https://git.gnerim.ru/gnezim/audio-transcribe.git"
