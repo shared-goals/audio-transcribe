@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Purpose
 
-End-to-end **local** pipeline that processes recorded meetings into structured Obsidian notes. Runs entirely on MacBook Air M4 (24 GB RAM). No cloud APIs.
+End-to-end **local** pipeline that processes recorded meetings into structured Obsidian notes. Runs entirely on macOS. No cloud APIs.
 
 Full pipeline:
 ```
@@ -124,6 +124,10 @@ Vault lives at `/Users/gnezim/_projects/gnezim/knowledge/`. Project spec at `kno
 ## Memory Budget (24 GB M4)
 
 Sequential execution is intentional — Whisper (~6 GB) unloads before Ollama/Gemma 27B (~16 GB) loads. Do not attempt to run both simultaneously.
+
+## Markdown Style
+
+Do not wrap or break lines in markdown files. Write each paragraph or list item as a single long line.
 
 ## Git Conventions
 
