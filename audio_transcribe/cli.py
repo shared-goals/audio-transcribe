@@ -18,16 +18,7 @@ warnings.filterwarnings("ignore", message=r"(?s).*Lightning automatically upgrad
 # Suppress noisy tqdm progress bars from huggingface_hub file downloads
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
-app = typer.Typer(
-    name="audio-transcribe",
-    help=(
-        "Local audio transcription pipeline.\n\n"
-        "Backends:\n\n"
-        "  mlx-vad   Apple Silicon GPU + VAD chunking (default, fastest)\n\n"
-        "  mlx       Apple Silicon GPU, single-pass\n\n"
-        "  whisperx  CPU via ctranslate2 (slowest, most compatible)\n"
-    ),
-)
+app = typer.Typer(name="audio-transcribe", help="Local audio transcription pipeline.", add_completion=False)
 
 speakers_app = typer.Typer(help="Manage known speaker voice embeddings.")
 app.add_typer(speakers_app, name="speakers")
@@ -54,7 +45,7 @@ def process(
     backend: str = typer.Option(
         "mlx-vad",
         "--backend",
-        help="Transcription backend: mlx-vad (Apple Silicon, default), mlx, whisperx (CPU)",
+        help="mlx-vad: Apple Silicon + VAD (fastest) | mlx: Apple Silicon | whisperx: CPU (slowest)",
     ),
     min_speakers: int = typer.Option(2, "--min-speakers", help="Minimum speakers for diarization"),
     max_speakers: int = typer.Option(6, "--max-speakers", help="Maximum speakers for diarization"),
