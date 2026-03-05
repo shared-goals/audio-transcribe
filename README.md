@@ -16,9 +16,7 @@ Audio (WAV/M4A/MP3)
 ## Install
 
 ```zsh
-git clone https://git.gnerim.ru/gnezim/audio-transcribe.git /tmp/audio-transcribe
-zsh /tmp/audio-transcribe/install.sh
-rm -rf /tmp/audio-transcribe
+curl -fsSL https://raw.githubusercontent.com/shared-goals/audio-transcribe/main/install.sh | zsh
 ```
 
 The installer handles Homebrew, ffmpeg, uv, the Python package, PATH setup, and HuggingFace token configuration.
@@ -144,4 +142,4 @@ uv run pytest
 
 ## License
 
-Private project.
+[MIT](LICENSE)
