@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+### Fixed
+- Mirror workflow: always checkout main branch on tag push events
+
 ## [0.2.1] - 2026-03-05
 
 ### Fixed
