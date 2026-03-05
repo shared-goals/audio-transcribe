@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import date
 from pathlib import Path
 
@@ -45,8 +46,17 @@ class SpeakerDB:
         atomic_write_text(self._index_path, json.dumps(self._index, ensure_ascii=False, indent=2))
 
     def _embedding_path(self, name: str) -> Path:
-        safe_name = self._normalize(name).replace(" ", "_")
-        return self._dir / f"{safe_name}.npy"
+        """Get or generate a safe filename for a speaker embedding."""
+        key = self._normalize(name)
+        # Return existing filename if already indexed
+        if key in self._index and "file" in self._index[key]:
+            return self._dir / str(self._index[key]["file"])
+        # Generate new safe filename
+        safe = re.sub(r"[^\w\-]", "_", key) or "_unknown"
+        counter = 1
+        while (self._dir / f"{safe}_{counter:02d}.npy").exists():
+            counter += 1
+        return self._dir / f"{safe}_{counter:02d}.npy"
 
     def has_speaker(self, name: str) -> bool:
         return self._normalize(name) in self._index
@@ -66,10 +76,11 @@ class SpeakerDB:
             self._index[key]["samples"] = count + 1
             self._index[key]["last_seen"] = str(date.today())
         else:
-            atomic_np_save(self._embedding_path(name), embedding)
+            path = self._embedding_path(name)
+            atomic_np_save(path, embedding)
             self._index[key] = {
                 "display_name": name,
-                "file": self._embedding_path(name).name,
+                "file": path.name,
                 "samples": 1,
                 "last_seen": str(date.today()),
             }

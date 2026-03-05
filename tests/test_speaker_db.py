@@ -1,5 +1,6 @@
 """Tests for speaker embedding database."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -129,6 +130,17 @@ def test_extract_speaker_embedding_returns_none_for_short_segments() -> None:
     with patch.object(_embeddings, "_load_audio_ffmpeg", return_value={"waveform": None, "sample_rate": 16000}):
         result = _embeddings.extract_speaker_embedding("test.wav", segments, "SPEAKER_00", min_duration=1.0)
     assert result is None
+
+
+def test_enroll_special_characters_in_name(tmp_path: Path) -> None:
+    """Speaker names with special characters should produce valid filenames."""
+    db = SpeakerDB(tmp_path / "speakers")
+    embedding = np.random.rand(256).astype(np.float32)
+    db.enroll("Ivan/Maria", embedding)
+    assert db.has_speaker("Ivan/Maria")
+    files = list((tmp_path / "speakers").glob("*.npy"))
+    assert len(files) == 1
+    assert "/" not in files[0].name
 
 
 def test_match_skips_corrupt_embedding(tmp_path):
