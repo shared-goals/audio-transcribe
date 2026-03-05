@@ -15,6 +15,7 @@ from audio_transcribe.models import (
     RunRecord,
     StageStats,
 )
+from audio_transcribe.util import atomic_write_text
 
 _DEFAULT_PATH = Path.home() / ".audio-transcribe" / "history.json"
 
@@ -29,8 +30,7 @@ class StatsStore:
         """Serialize and append a RunRecord to the history file."""
         records = self._load_raw()
         records.append(asdict(record))
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(self._path, json.dumps(records, ensure_ascii=False, indent=2))
 
     def load(self) -> list[RunRecord]:
         """Deserialize all records from disk."""
@@ -53,7 +53,7 @@ class StatsStore:
     def clear(self) -> None:
         """Empty the history file."""
         if self._path.exists():
-            self._path.write_text("[]", encoding="utf-8")
+            atomic_write_text(self._path, "[]")
 
     def _load_raw(self) -> list[dict[str, Any]]:
         if not self._path.exists():
