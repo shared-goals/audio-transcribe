@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from audio_transcribe.models import Config, InputInfo, RunRecord, StageStats
 from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageStart
 from audio_transcribe.stages.correct import apply_corrections, load_corrections
 from audio_transcribe.stages.format import format_transcript
@@ -103,6 +104,8 @@ class Pipeline:
         self.reporter = reporter
         self.stats_store = stats_store
         self.estimator_history = estimator_history or []
+        self._stage_stats: dict[str, StageStats] = {}
+        self._corrections_applied: int = 0
 
     def run(self, config: PipelineConfig) -> dict[str, Any]:
         """Execute the full pipeline."""
@@ -156,6 +159,7 @@ class Pipeline:
                 lambda: apply_corrections(result.get("segments", []), corrections),
             )
             result["segments"] = segments
+            self._corrections_applied = count
 
         # Stage 6: Build output
         elapsed = time.time() - t0
@@ -187,6 +191,9 @@ class Pipeline:
             )
         )
 
+        if self.stats_store is not None:
+            self._persist_stats(config, output, effective_language, time.time() - t0)
+
         # Print JSON to stdout if no output file specified and not suppressed
         if not config.output and not config.suppress_stdout_json:
             print(json.dumps(output, ensure_ascii=False, indent=2))
@@ -203,7 +210,51 @@ class Pipeline:
         self.reporter.on_stage_complete(
             StageComplete(stage=name, time_s=round(elapsed, 1), peak_rss_mb=round(_current_rss_mb(), 0))
         )
+        self._stage_stats[name] = StageStats(time_s=round(elapsed, 1), peak_rss_mb=round(_current_rss_mb(), 0))
         return result
+
+    def _persist_stats(self, config: PipelineConfig, output: dict[str, Any], language: str, elapsed: float) -> None:
+        """Best-effort persistence of run statistics."""
+        try:
+            from datetime import datetime
+
+            from audio_transcribe.quality.scorecard import compute_quality
+            from audio_transcribe.stages.format import compute_duration
+            from audio_transcribe.stats.hardware import detect_hardware
+
+            segments = output.get("segments", [])
+            duration_s = compute_duration(segments)
+
+            record = RunRecord(
+                id=datetime.now().isoformat(),
+                hardware=detect_hardware(),
+                input=InputInfo(
+                    file=config.audio_file,
+                    duration_s=duration_s,
+                    file_size_mb=(
+                        Path(config.audio_file).stat().st_size / 1_048_576
+                        if Path(config.audio_file).exists()
+                        else 0.0
+                    ),
+                ),
+                config=Config(
+                    language=language,
+                    model=config.model,
+                    backend=config.backend,
+                    min_speakers=config.min_speakers,
+                    max_speakers=config.max_speakers,
+                    align_model=config.align_model,
+                ),
+                stages=self._stage_stats,
+                quality=compute_quality(segments),
+                corrections_applied=self._corrections_applied,
+                total_time_s=round(elapsed, 1),
+                realtime_ratio=round(elapsed / duration_s, 2) if duration_s > 0 else 0.0,
+            )
+            assert self.stats_store is not None  # caller checks before calling
+            self.stats_store.append(record)
+        except Exception:
+            pass  # Stats are best-effort — never crash the pipeline
 
 
 def run_pipeline(
