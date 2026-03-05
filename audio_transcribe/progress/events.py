@@ -34,6 +34,15 @@ class StageComplete:
 
 
 @dataclass
+class StageError:
+    """Emitted when a pipeline stage fails."""
+
+    stage: str
+    error: str
+    time_s: float = 0.0
+
+
+@dataclass
 class PipelineComplete:
     """Emitted when the entire pipeline finishes."""
 

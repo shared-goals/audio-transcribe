@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 
-from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageStart
+from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageError, StageStart
 
 
 class JsonReporter:
@@ -22,6 +22,10 @@ class JsonReporter:
     def on_stage_complete(self, event: StageComplete) -> None:
         """Handle stage complete event."""
         self._emit({"event": "stage_complete", **asdict(event)})
+
+    def on_stage_error(self, event: StageError) -> None:
+        """Handle stage error event."""
+        self._emit({"event": "stage_error", **asdict(event)})
 
     def on_pipeline_complete(self, event: PipelineComplete) -> None:
         """Handle pipeline complete event."""
