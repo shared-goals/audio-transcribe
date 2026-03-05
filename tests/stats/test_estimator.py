@@ -80,3 +80,45 @@ def test_estimate_result_fields():
     assert r.eta_s == 10.0
     assert r.confident is True
     assert r.sample_size == 5
+
+
+def _make_record_with_backend(duration_s, transcribe_time, backend):
+    return RunRecord(
+        id="test",
+        hardware=_make_hw(),
+        input=InputInfo(file="test.wav", duration_s=duration_s, file_size_mb=duration_s * 0.03),
+        config=Config(language="ru", model="large-v3", backend=backend),
+        stages={"transcribe": StageStats(time_s=transcribe_time, peak_rss_mb=3000)},
+        quality=None,
+        corrections_applied=0,
+        total_time_s=transcribe_time,
+        realtime_ratio=transcribe_time / duration_s,
+    )
+
+
+def test_estimate_filters_by_backend():
+    """Only history from the same backend is used for estimation."""
+    records = [
+        _make_record_with_backend(60.0, 10.0, "mlx-vad"),
+        _make_record_with_backend(120.0, 20.0, "mlx-vad"),
+        _make_record_with_backend(180.0, 30.0, "mlx-vad"),
+        _make_record_with_backend(60.0, 60.0, "whisperx"),  # much slower
+        _make_record_with_backend(120.0, 120.0, "whisperx"),
+        _make_record_with_backend(180.0, 180.0, "whisperx"),
+    ]
+    mlx_result = estimate_stage("transcribe", 240.0, records, backend="mlx-vad")
+    wx_result = estimate_stage("transcribe", 240.0, records, backend="whisperx")
+    assert mlx_result is not None
+    assert wx_result is not None
+    assert mlx_result.eta_s < wx_result.eta_s  # mlx-vad is faster
+
+
+def test_estimate_no_backend_filter_uses_all():
+    """Without backend filter, all history is used."""
+    records = [
+        _make_record_with_backend(60.0, 10.0, "mlx-vad"),
+        _make_record_with_backend(120.0, 20.0, "whisperx"),
+        _make_record_with_backend(180.0, 30.0, "mlx"),
+    ]
+    result = estimate_stage("transcribe", 240.0, records)
+    assert result is not None

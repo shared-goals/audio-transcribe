@@ -87,4 +87,6 @@ def test_identify_matches_enrolled_speaker_from_previous_meeting(tmp_path):
 
     # Verify the meeting file was updated
     doc = parse_meeting(m2_path.read_text())
-    assert doc.frontmatter["speakers"]["SPEAKER_00"] == "[[Andrey]]"
+    speakers = doc.frontmatter["speakers"]
+    assert isinstance(speakers, dict)
+    assert speakers["SPEAKER_00"] == "[[Andrey]]"

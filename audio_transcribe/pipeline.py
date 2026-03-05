@@ -136,6 +136,7 @@ class Pipeline:
         self._stage_stats: dict[str, StageStats] = {}
         self._corrections_applied: int = 0
         self._audio_duration_s: float = 0.0
+        self._backend: str = ""
 
     def run(self, config: PipelineConfig) -> dict[str, Any]:
         """Execute the full pipeline."""
@@ -149,6 +150,7 @@ class Pipeline:
 
         # Get audio duration for ETA estimation and TUI display
         self._audio_duration_s = _probe_duration(config.audio_file)
+        self._backend = config.backend
 
         # Emit pipeline start
         cfg_dict = {"model": config.model, "backend": config.backend}
@@ -262,7 +264,7 @@ class Pipeline:
             return None
         from audio_transcribe.stats.estimator import estimate_stage
 
-        est = estimate_stage(stage, self._audio_duration_s, self.estimator_history)
+        est = estimate_stage(stage, self._audio_duration_s, self.estimator_history, backend=self._backend)
         return est.eta_s if est else None
 
     def _run_stage(self, name: str, fn: Any) -> Any:

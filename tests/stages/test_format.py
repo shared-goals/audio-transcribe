@@ -282,8 +282,10 @@ def test_format_with_speakers():
     doc = parse_meeting(result)
 
     assert "Speakers" in doc.sections
-    assert doc.frontmatter["speakers"]["SPEAKER_00"] == "Speaker A"
-    assert doc.frontmatter["speakers"]["SPEAKER_01"] == "Speaker B"
+    speakers = doc.frontmatter["speakers"]
+    assert isinstance(speakers, dict)
+    assert speakers["SPEAKER_00"] == "Speaker A"
+    assert speakers["SPEAKER_01"] == "Speaker B"
     # Transcript has clean text without speaker prefixes (diarize step adds them)
     assert "Привет" in doc.sections["Transcript"]
     assert "Speaker A" not in doc.sections["Transcript"]
