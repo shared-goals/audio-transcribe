@@ -159,3 +159,7 @@ test_data/
 
 # Git worktrees
 .worktrees/
+
+# Runtime artifacts
+.audio-data/
+out.json
