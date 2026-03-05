@@ -139,6 +139,10 @@ def diarize_and_update(
     doc = set_frontmatter(doc, "speakers", {sid: label for sid, label in legend.items()})
     doc = set_frontmatter(doc, "reanalyze", True)
 
+    from datetime import datetime
+
+    doc = set_frontmatter(doc, "diarization_ts", datetime.now().isoformat())
+
     meeting_path.write_text(doc.to_markdown(), encoding="utf-8")
 
     # Auto-enroll pre-existing wiki-link speakers if db provided
