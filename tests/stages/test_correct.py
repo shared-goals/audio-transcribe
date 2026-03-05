@@ -98,6 +98,28 @@ def test_learn_corrections_no_diff():
     assert len(learned) == 0
 
 
+def test_load_corrections_language_scoped(tmp_path):
+
+    """Language-scoped corrections should load only the matching language."""
+    corrections_file = tmp_path / "corrections.yaml"
+    corrections_file.write_text(
+        "ru:\n  substitutions:\n    кубернетес: Kubernetes\nen:\n  substitutions:\n    colour: color\n"
+    )
+    ru = load_corrections(str(corrections_file), language="ru")
+    assert ru["substitutions"] == {"кубернетес": "Kubernetes"}
+    en = load_corrections(str(corrections_file), language="en")
+    assert en["substitutions"] == {"colour": "color"}
+
+
+def test_load_corrections_legacy_flat_format(tmp_path):
+
+    """Legacy flat format (no language keys) should still work."""
+    corrections_file = tmp_path / "corrections.yaml"
+    corrections_file.write_text("substitutions:\n  кубернетес: Kubernetes\n")
+    result = load_corrections(str(corrections_file), language="ru")
+    assert result["substitutions"] == {"кубернетес": "Kubernetes"}
+
+
 def test_learn_corrections_unequal_word_count():
     """Replacements with different word counts should be captured as phrases."""
     original = ["в общем то да"]

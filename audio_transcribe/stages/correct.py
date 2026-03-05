@@ -11,17 +11,27 @@ from typing import Any
 import yaml
 
 
-def load_corrections(path: str) -> dict[str, Any]:
-    """Load corrections from a YAML file. Returns empty structure if file doesn't exist."""
+def load_corrections(path: str, language: str = "ru") -> dict[str, Any]:
+    """Load corrections from YAML. Supports flat (legacy) and language-scoped format."""
     p = Path(path)
     if not p.exists():
         return {"substitutions": {}, "patterns": []}
     data = yaml.safe_load(p.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         return {"substitutions": {}, "patterns": []}
+    # Legacy flat format
+    if "substitutions" in data or "patterns" in data:
+        return {
+            "substitutions": data.get("substitutions") or {},
+            "patterns": data.get("patterns") or [],
+        }
+    # Language-scoped format
+    lang_data = data.get(language, {})
+    if not isinstance(lang_data, dict):
+        return {"substitutions": {}, "patterns": []}
     return {
-        "substitutions": data.get("substitutions") or {},
-        "patterns": data.get("patterns") or [],
+        "substitutions": lang_data.get("substitutions") or {},
+        "patterns": lang_data.get("patterns") or [],
     }
 
 
