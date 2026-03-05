@@ -98,13 +98,16 @@ def diarize_and_update(
     speaker_lines = [f"- **{label}**: {sid}" for sid, label in legend.items()]
     speakers_content = "\n".join(speaker_lines)
 
-    # Build timestamp → speaker label mapping from diarized segments
-    ts_to_speaker: dict[str, str] = {}
+    # Build timestamp → speaker label mapping from diarized segments.
+    # Multiple segments can share the same formatted timestamp (sub-second
+    # differences get truncated), so we collect *all* entries per timestamp
+    # and pop them in order when matching transcript lines.
+    ts_to_speakers: dict[str, list[tuple[str, str]]] = {}
     for seg in diarized_segments:
         ts = format_time(float(seg.get("start", 0.0)))
         speaker_id = str(seg.get("speaker", ""))
         if speaker_id and speaker_id in legend:
-            ts_to_speaker[ts] = legend[speaker_id]
+            ts_to_speakers.setdefault(ts, []).append((legend[speaker_id], str(seg.get("text", ""))))
 
     # Preserve existing transcript text; only add speaker label prefixes
     existing_transcript = doc.sections.get("Transcript", "")
@@ -112,16 +115,18 @@ def diarize_and_update(
     for line in existing_transcript.split("\n"):
         line_ts = _match_timestamp(line)
         out_line = line
-        if line_ts and line_ts in ts_to_speaker:
-            speaker = ts_to_speaker[line_ts]
-            after_bracket = line.split("] ", 1)
-            if len(after_bracket) == 2:
-                # Strip all stacked speaker prefixes (e.g. "Speaker A: Unknown: text" → "text")
-                _pfx = re.compile(r"^(?:Speaker [A-Z]|SPEAKER_\d+|Unknown|None):\s+")
-                text_part = after_bracket[1]
-                while _pfx.match(text_part):
-                    text_part = _pfx.sub("", text_part, count=1)
-                out_line = f"[{line_ts}] {speaker}: {text_part}"
+        if line_ts and line_ts in ts_to_speakers:
+            entries = ts_to_speakers[line_ts]
+            if entries:
+                speaker = entries.pop(0)[0]
+                after_bracket = line.split("] ", 1)
+                if len(after_bracket) == 2:
+                    # Strip all stacked speaker prefixes (e.g. "Speaker A: Unknown: text" → "text")
+                    _pfx = re.compile(r"^(?:Speaker [A-Z]|SPEAKER_\d+|Unknown|None):\s+")
+                    text_part = after_bracket[1]
+                    while _pfx.match(text_part):
+                        text_part = _pfx.sub("", text_part, count=1)
+                    out_line = f"[{line_ts}] {speaker}: {text_part}"
         new_lines.append(out_line)
     transcript_content = "\n".join(new_lines)
 
