@@ -47,6 +47,7 @@ def _load_audio_ffmpeg(audio_path: str, sample_rate: int = 16000) -> dict[str, A
         ["ffmpeg", "-y", "-i", audio_path, "-ar", str(sample_rate), "-ac", "1", "-f", "f32le", "-"],
         capture_output=True,
         check=True,
+        timeout=300,
     )
     data = np.frombuffer(proc.stdout, dtype=np.float32).copy()
     waveform = torch.from_numpy(data).unsqueeze(0)  # (1, samples)
