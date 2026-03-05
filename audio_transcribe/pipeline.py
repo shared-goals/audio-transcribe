@@ -172,7 +172,7 @@ class Pipeline:
         corrections_path = config.corrections_path or str(
             Path.home() / ".audio-transcribe" / "corrections.yaml"
         )
-        corrections = load_corrections(corrections_path)
+        corrections = load_corrections(corrections_path, effective_language)
         if corrections["substitutions"] or corrections["patterns"]:
             segments, count = self._run_stage(
                 "correct",
