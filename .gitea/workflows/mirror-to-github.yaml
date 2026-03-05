@@ -3,6 +3,7 @@ name: Mirror to GitHub
 on:
   push:
     branches: [main]
+    tags: ['v*']
 
 jobs:
   mirror:
@@ -18,7 +19,7 @@ jobs:
           git config user.name "mirror-bot"
           git config user.email "mirror-bot@noreply"
           git add -A
-          git commit -m "mirror: remove private files" --allow-empty
+          git commit --amend --no-edit
 
       - name: Scan for PII
         run: |
@@ -37,8 +38,9 @@ jobs:
       - name: Push to GitHub
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.GITHUB_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.GH_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
           git remote add github git@github.com:shared-goals/audio-transcribe.git
           git push github main --force
+          git push github --tags --force
