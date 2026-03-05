@@ -84,9 +84,14 @@ def learn_corrections(original: list[str], corrected: list[str]) -> dict[str, st
 
         matcher = difflib.SequenceMatcher(None, orig_words, corr_words)
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-            if tag == "replace" and (i2 - i1) == (j2 - j1):
-                for orig_w, corr_w in zip(orig_words[i1:i2], corr_words[j1:j2], strict=True):
-                    if orig_w != corr_w:
-                        learned[orig_w] = corr_w
+            if tag == "replace":
+                if (i2 - i1) == (j2 - j1):
+                    for orig_w, corr_w in zip(orig_words[i1:i2], corr_words[j1:j2], strict=True):
+                        if orig_w != corr_w:
+                            learned[orig_w] = corr_w
+                else:
+                    orig_phrase = " ".join(orig_words[i1:i2])
+                    corr_phrase = " ".join(corr_words[j1:j2])
+                    learned[orig_phrase] = corr_phrase
 
     return learned
