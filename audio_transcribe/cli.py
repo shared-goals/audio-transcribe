@@ -25,6 +25,25 @@ app.add_typer(speakers_app, name="speakers")
 
 _DEFAULT_HISTORY = Path.home() / ".audio-transcribe" / "history.json"
 _DEFAULT_CORRECTIONS = Path.home() / ".audio-transcribe" / "corrections.yaml"
+_HF_TOKEN_CACHE = Path.home() / ".cache" / "huggingface" / "token"
+
+
+def _sync_hf_token() -> None:
+    """Sync HF_TOKEN between environment and ~/.cache/huggingface/token.
+
+    If HF_TOKEN is set in env but the cache file is missing, write it.
+    If HF_TOKEN is not set but the cache file exists, load it into env.
+    """
+    env_token = os.environ.get("HF_TOKEN", "")
+    if env_token:
+        if not _HF_TOKEN_CACHE.exists():
+            _HF_TOKEN_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            _HF_TOKEN_CACHE.write_text(env_token, encoding="utf-8")
+    else:
+        if _HF_TOKEN_CACHE.is_file():
+            cached = _HF_TOKEN_CACHE.read_text(encoding="utf-8").strip()
+            if cached:
+                os.environ["HF_TOKEN"] = cached
 
 
 @app.callback()
@@ -34,6 +53,7 @@ def main(verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable deb
     from audio_transcribe.update import check_for_update
 
     configure(verbose=verbose)
+    _sync_hf_token()
     check_for_update()
 
 
