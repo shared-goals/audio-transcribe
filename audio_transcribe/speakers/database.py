@@ -11,6 +11,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from audio_transcribe.speakers.embeddings import cosine_distance
+from audio_transcribe.util import atomic_np_save, atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,7 @@ class SpeakerDB:
         return {}
 
     def _save_index(self) -> None:
-        self._index_path.write_text(
-            json.dumps(self._index, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_text(self._index_path, json.dumps(self._index, ensure_ascii=False, indent=2))
 
     def _embedding_path(self, name: str) -> Path:
         safe_name = self._normalize(name).replace(" ", "_")
@@ -64,11 +62,11 @@ class SpeakerDB:
             raw_count = self._index[key].get("samples", 1)
             count = int(raw_count) if isinstance(raw_count, (int, float, str)) else 1
             averaged = (existing * count + embedding) / (count + 1)
-            np.save(self._embedding_path(name), averaged)
+            atomic_np_save(self._embedding_path(name), averaged)
             self._index[key]["samples"] = count + 1
             self._index[key]["last_seen"] = str(date.today())
         else:
-            np.save(self._embedding_path(name), embedding)
+            atomic_np_save(self._embedding_path(name), embedding)
             self._index[key] = {
                 "display_name": name,
                 "file": self._embedding_path(name).name,
