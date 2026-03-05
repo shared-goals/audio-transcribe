@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import resource
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
-from rich.console import Console, Group
+from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
 from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageError, StageStart
+
+# Maximum number of pipeline stages (preprocess, transcribe, align, diarize, correct, format)
+_MAX_STAGES = 6
 
 
 def _current_rss_mb() -> float:
@@ -33,6 +37,16 @@ def _format_time(seconds: float) -> str:
     return f"{m}m {s}s"
 
 
+class _LiveDisplay:
+    """Rich renderable that re-evaluates on every render tick for live elapsed updates."""
+
+    def __init__(self, reporter: TuiReporter) -> None:
+        self._reporter = reporter
+
+    def __rich_console__(self, console: Any, options: Any) -> Any:
+        yield self._reporter._build_display()
+
+
 class TuiReporter:
     """Rich TUI reporter using rich.live.Live for interactive terminal progress display."""
 
@@ -43,10 +57,12 @@ class TuiReporter:
         self._stages_done: list[dict[str, Any]] = []
         self._current_stage: str | None = None
         self._current_eta: float | None = None
+        self._stage_start_time: float = 0.0
+        self._spinner = Spinner("dots")
 
-    def _make_renderable(self) -> Group:
+    def _build_display(self) -> Group:
         """Build the current live renderable from pipeline state."""
-        lines: list[Any] = []
+        lines: list[RenderableType] = []
 
         # Header: filename + config
         if self._pipeline_start:
@@ -58,9 +74,9 @@ class TuiReporter:
             model = cfg.get("model", "")
             backend = cfg.get("backend", "")
             lines.append(Text.from_markup(f"[dim]  {backend} / {model}[/]"))
-            lines.append(Text(""))  # blank line separator
+            lines.append(Text(""))
 
-        # Completed stages — green checkmark + timing + memory
+        # Completed stages
         for s in self._stages_done:
             rss = f"  [dim]{s['peak_rss_mb']:.0f} MB[/]" if s.get("peak_rss_mb") else ""
             lines.append(
@@ -69,11 +85,20 @@ class TuiReporter:
                 )
             )
 
-        # Current stage — spinner with optional ETA
+        # Current stage — persistent spinner + live elapsed
         if self._current_stage:
+            elapsed = time.time() - self._stage_start_time
+            elapsed_str = f"  [dim]{_format_time(elapsed)}[/]"
             eta_str = f"  [dim]ETA: {_format_time(self._current_eta)}[/]" if self._current_eta is not None else ""
-            spinner = Spinner("dots", text=f" [yellow]{self._current_stage}[/]{eta_str}")
-            lines.append(spinner)
+            self._spinner.text = Text.from_markup(f" [yellow]{self._current_stage}[/]{elapsed_str}{eta_str}")
+            lines.append(self._spinner)
+
+        # Pad to fixed height to prevent Rich Live from leaving artifacts
+        n_done = len(self._stages_done)
+        n_active = 1 if self._current_stage else 0
+        padding = _MAX_STAGES - n_done - n_active
+        for _ in range(max(0, padding)):
+            lines.append(Text(""))
 
         return Group(*lines)
 
@@ -83,10 +108,11 @@ class TuiReporter:
         self._stages_done = []
         self._current_stage = None
         self._current_eta = None
+        self._spinner = Spinner("dots")
         self._live = Live(
-            self._make_renderable(),
+            _LiveDisplay(self),
             console=self._console,
-            refresh_per_second=10,
+            refresh_per_second=4,
         )
         self._live.start()
 
@@ -94,8 +120,8 @@ class TuiReporter:
         """Update live display to show stage as running."""
         self._current_stage = event.stage
         self._current_eta = event.eta_s
-        if self._live:
-            self._live.update(self._make_renderable())
+        self._stage_start_time = time.time()
+        self._spinner = Spinner("dots")
 
     def on_stage_complete(self, event: StageComplete) -> None:
         """Mark stage as done and update display."""
@@ -108,8 +134,6 @@ class TuiReporter:
         )
         self._current_stage = None
         self._current_eta = None
-        if self._live:
-            self._live.update(self._make_renderable())
 
     def on_stage_error(self, event: StageError) -> None:
         """Mark stage as failed and update display."""
@@ -117,14 +141,10 @@ class TuiReporter:
             {"stage": event.stage, "time_s": event.time_s, "peak_rss_mb": 0, "error": event.error}
         )
         self._current_stage = None
-        if self._live:
-            self._live.update(self._make_renderable())
 
     def on_pipeline_complete(self, event: PipelineComplete) -> None:
         """Stop live display and print summary table."""
-        # Final render with all stages done
         if self._live:
-            self._live.update(self._make_renderable())
             self._live.stop()
             self._live = None
 
@@ -141,6 +161,9 @@ class TuiReporter:
         table.add_row("[bold]Total[/]", f"[bold]{_format_time(event.total_time_s)}[/]", "")
         self._console.print(table)
 
-        self._console.print(f"\n[bold green]Done![/] Output: {event.output}")
+        if event.output and event.output != "<stdout>":
+            self._console.print(f"\n[bold green]Done![/] Output: {event.output}")
+        else:
+            self._console.print("\n[bold green]Done![/]")
         if event.transcript:
             self._console.print(f"  Transcript: {event.transcript}")

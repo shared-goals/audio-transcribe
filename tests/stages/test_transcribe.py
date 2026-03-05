@@ -235,7 +235,7 @@ def test_transcribe_mlx_maps_model_name_and_calls_correctly(tmp_path):
     assert len(result["segments"]) == 1
 
 
-def test_transcribe_mlx_unknown_model_warns_and_passes_through(tmp_path, capsys):
+def test_transcribe_mlx_unknown_model_warns_and_passes_through(tmp_path, caplog):
     """An unknown model name should be passed through directly with a warning."""
     dummy_audio = tmp_path / "test.wav"
     dummy_audio.touch()
@@ -263,8 +263,7 @@ def test_transcribe_mlx_unknown_model_warns_and_passes_through(tmp_path, capsys)
         language="ru",
         word_timestamps=False,
     )
-    captured = capsys.readouterr()
-    assert "not in MLX model map" in captured.err
+    assert "not in MLX model map" in caplog.text
 
 
 # --- mlx-vad backend tests ---

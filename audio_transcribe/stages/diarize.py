@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import gc
-import sys
+import logging
 import time
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def diarize(
@@ -15,14 +17,14 @@ def diarize(
     import whisperx
     from whisperx.diarize import DiarizationPipeline
 
-    print(f"[3/3] Diarizing ({min_speakers}-{max_speakers} speakers)...", file=sys.stderr)
+    logger.debug("Diarizing (%d-%d speakers)", min_speakers, max_speakers)
     t = time.time()
     diarize_model = DiarizationPipeline(
         model_name="pyannote/speaker-diarization-3.1", token=hf_token, device="cpu"
     )
     diarize_segments = diarize_model(audio, min_speakers=min_speakers, max_speakers=max_speakers)
     result = whisperx.assign_word_speakers(diarize_segments, result)
-    print(f"      Done in {time.time() - t:.1f}s", file=sys.stderr)
+    logger.debug("Diarization done in %.1fs", time.time() - t)
 
     del diarize_model
     gc.collect()

@@ -8,7 +8,7 @@ import sys
 
 def configure(verbose: bool = False) -> None:
     """Configure logging for the audio_transcribe package."""
-    level = logging.DEBUG if verbose else logging.INFO
+    level = logging.DEBUG if verbose else logging.WARNING
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
     root = logging.getLogger("audio_transcribe")

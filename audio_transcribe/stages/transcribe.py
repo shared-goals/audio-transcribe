@@ -5,15 +5,14 @@ All backends return (result_dict, audio_array) for downstream align/diarize stag
 
 import gc
 import logging
-import sys
 import time
-import warnings
 from typing import Any
 
-# Suppress third-party noise that doesn't affect pipeline functionality
-warnings.filterwarnings("ignore", message="torchcodec is not installed correctly", category=UserWarning)
-warnings.filterwarnings("ignore", message="Lightning automatically upgraded", category=UserWarning)
+logger = logging.getLogger(__name__)
+
 logging.getLogger("whisperx").setLevel(logging.WARNING)
+logging.getLogger("lightning.pytorch.utilities.migration.utils").setLevel(logging.WARNING)
+logging.getLogger("lightning").setLevel(logging.WARNING)
 
 # Maps whisper model size names to mlx-community HuggingFace repos (Apple Silicon MLX backend)
 MLX_MODEL_MAP: dict[str, str] = {
@@ -31,12 +30,12 @@ def transcribe(audio_path: str, model_size: str, language: str) -> tuple[dict[st
     """Transcribe using WhisperX (CTranslate2/CPU backend)."""
     import whisperx
 
-    print(f"[1/3] Transcribing with {model_size} (int8, cpu)...", file=sys.stderr)
+    logger.debug("Transcribing with %s (int8, cpu)", model_size)
     t = time.time()
     model = whisperx.load_model(model_size, device="cpu", compute_type="int8")
     audio = whisperx.load_audio(audio_path)
     result = model.transcribe(audio, batch_size=16, language=language)
-    print(f"      {len(result.get('segments', []))} segments in {time.time() - t:.1f}s", file=sys.stderr)
+    logger.debug("%d segments in %.1fs", len(result.get("segments", [])), time.time() - t)
 
     del model
     gc.collect()
@@ -61,14 +60,14 @@ def transcribe_mlx(audio_path: str, model_size: str, language: str) -> tuple[dic
 
     mlx_repo = MLX_MODEL_MAP.get(model_size)
     if mlx_repo is None:
-        print(
-            f"Warning: '{model_size}' not in MLX model map; using as HF repo directly. "
-            f"Requires MLX-converted weights. Known sizes: {list(MLX_MODEL_MAP.keys())}",
-            file=sys.stderr,
+        logger.warning(
+            "'%s' not in MLX model map; using as HF repo directly. Known sizes: %s",
+            model_size,
+            list(MLX_MODEL_MAP.keys()),
         )
         mlx_repo = model_size
 
-    print(f"[1/3] Transcribing with mlx-whisper ({mlx_repo})...", file=sys.stderr)
+    logger.debug("Transcribing with mlx-whisper (%s)", mlx_repo)
     t = time.time()
 
     result: dict[str, Any] = mlx_whisper.transcribe(
@@ -84,7 +83,7 @@ def transcribe_mlx(audio_path: str, model_size: str, language: str) -> tuple[dic
     # Load audio array separately for the align/diarize stages
     audio: Any = whisperx.load_audio(audio_path)
 
-    print(f"      {len(result.get('segments', []))} segments in {time.time() - t:.1f}s", file=sys.stderr)
+    logger.debug("%d segments in %.1fs", len(result.get("segments", [])), time.time() - t)
     return result, audio
 
 
@@ -111,14 +110,14 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
 
     mlx_repo = MLX_MODEL_MAP.get(model_size)
     if mlx_repo is None:
-        print(
-            f"Warning: '{model_size}' not in MLX model map; using as HF repo directly. "
-            f"Requires MLX-converted weights. Known sizes: {list(MLX_MODEL_MAP.keys())}",
-            file=sys.stderr,
+        logger.warning(
+            "'%s' not in MLX model map; using as HF repo directly. Known sizes: %s",
+            model_size,
+            list(MLX_MODEL_MAP.keys()),
         )
         mlx_repo = model_size
 
-    print(f"[1/3] Transcribing with mlx-whisper + VAD ({mlx_repo})...", file=sys.stderr)
+    logger.debug("Transcribing with mlx-whisper + VAD (%s)", mlx_repo)
     t = time.time()
 
     # Load audio (float32 numpy array at 16kHz)
@@ -169,7 +168,7 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
     }
 
     n_seg, n_ch = len(all_segments), len(chunks)
-    print(f"      {n_seg} segments from {n_ch} VAD chunks in {time.time() - t:.1f}s", file=sys.stderr)
+    logger.debug("%d segments from %d VAD chunks in %.1fs", n_seg, n_ch, time.time() - t)
     return result, audio
 
 
