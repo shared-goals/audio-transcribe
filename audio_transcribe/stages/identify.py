@@ -52,6 +52,9 @@ def identify_speakers(
             continue  # Already identified
 
         embedding = _embeddings.extract_speaker_embedding(audio_file, segments, str(speaker_id))
+        if embedding is None:
+            result.unmatched.append(str(speaker_id))
+            continue
         matches = db.match(embedding, threshold=threshold)
 
         if matches:

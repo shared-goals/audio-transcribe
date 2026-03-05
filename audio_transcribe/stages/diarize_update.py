@@ -7,8 +7,6 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
-
 from audio_transcribe.markdown.parser import parse_meeting
 from audio_transcribe.markdown.updater import extract_wiki_links, replace_section, set_frontmatter
 from audio_transcribe.speakers import embeddings as _embeddings
@@ -143,5 +141,5 @@ def diarize_and_update(
         for speaker_id, person_name in pre_wiki_links.items():
             if not db.has_speaker(person_name):
                 embedding = _embeddings.extract_speaker_embedding(audio_file, diarized_segments, speaker_id)
-                if np.any(embedding):
+                if embedding is not None:
                     db.enroll(person_name, embedding)

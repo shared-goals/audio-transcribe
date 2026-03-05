@@ -1,8 +1,11 @@
 """Tests for speaker embedding database."""
 
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
+from audio_transcribe.speakers import embeddings as _embeddings
 from audio_transcribe.speakers.database import SpeakerDB
 from audio_transcribe.speakers.embeddings import cosine_distance
 
@@ -116,6 +119,16 @@ def test_enroll_wrong_dimension_raises(tmp_path):
     bad_embedding = np.zeros(128, dtype=np.float32)
     with pytest.raises(ValueError, match="256"):
         db.enroll("Test Speaker", bad_embedding)
+
+
+def test_extract_speaker_embedding_returns_none_for_short_segments() -> None:
+    """Should return None when no segments are long enough."""
+    segments = [
+        {"start": 0.0, "end": 0.5, "text": "Hi", "speaker": "SPEAKER_00"},
+    ]
+    with patch.object(_embeddings, "_load_audio_ffmpeg", return_value={"waveform": None, "sample_rate": 16000}):
+        result = _embeddings.extract_speaker_embedding("test.wav", segments, "SPEAKER_00", min_duration=1.0)
+    assert result is None
 
 
 def test_match_skips_corrupt_embedding(tmp_path):
