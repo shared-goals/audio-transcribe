@@ -2,7 +2,7 @@
 
 import json
 
-from audio_transcribe.markdown.parser import parse_meeting
+from audio_transcribe.markdown.parser import parse_meeting, parse_speaker_legend
 from audio_transcribe.stages.format import (
     build_speaker_legend,
     compute_duration,
@@ -194,9 +194,8 @@ def test_format_transcript_with_segments():
     md = format_transcript(_make_data(segs))
     assert "speakers: 2" in md
     assert "## Speakers" in md
-    assert "SPEAKER_00: Speaker A" in md
-    assert "SPEAKER_01: Speaker B" in md
-    assert "**Speaker A**: SPEAKER_00" not in md
+    assert "**Speaker A**: SPEAKER_00" in md
+    assert "**Speaker B**: SPEAKER_01" in md
     assert "[00:00] Speaker A: Привет" in md
     assert "[00:03] Speaker B: Мир" in md
 
@@ -294,9 +293,8 @@ def test_format_with_speakers_legend_format():
         ],
     }
     result = format_meeting_note(data, audio_data_path=".audio-data/meeting.json")
-    assert "SPEAKER_00: Speaker A" in result
-    assert "SPEAKER_01: Speaker B" in result
-    assert "**Speaker A**: SPEAKER_00" not in result
+    assert "**Speaker A**: SPEAKER_00" in result
+    assert "**Speaker B**: SPEAKER_01" in result
 
 
 def test_format_frontmatter_has_audio_file():
@@ -325,3 +323,45 @@ def test_format_date_fallback_to_today():
     result = format_meeting_note(data, audio_data_path=".audio-data/test.json")
     doc = parse_meeting(result)
     assert doc.frontmatter["date"] == str(date.today())
+
+
+# --- legend ↔ parser round-trip ---
+
+
+def test_format_meeting_note_legend_parseable():
+    """format_meeting_note legend must be parseable by parse_speaker_legend."""
+    data = {
+        "segments": [
+            {"start": 0.0, "end": 2.0, "text": "Hello", "speaker": "SPEAKER_00"},
+            {"start": 3.0, "end": 5.0, "text": "Hi", "speaker": "SPEAKER_01"},
+        ],
+        "audio_file": "2026-03-05-test.wav",
+        "language": "ru",
+        "model": "large-v3",
+        "processing_time_s": 5.0,
+    }
+    md = format_meeting_note(data, audio_data_path=".audio-data/test.json")
+    doc = parse_meeting(md)
+    legend = parse_speaker_legend(doc)
+    assert "SPEAKER_00" in legend
+    assert "SPEAKER_01" in legend
+    assert legend["SPEAKER_00"] == "Speaker A"
+    assert legend["SPEAKER_01"] == "Speaker B"
+
+
+def test_format_transcript_legend_parseable():
+    """format_transcript legend must be parseable by parse_speaker_legend."""
+    data = {
+        "segments": [
+            {"start": 0.0, "end": 2.0, "text": "Hello", "speaker": "SPEAKER_00"},
+        ],
+        "audio_file": "test.wav",
+        "language": "ru",
+        "model": "large-v3",
+        "processing_time_s": 5.0,
+    }
+    md = format_transcript(data)
+    doc = parse_meeting(md)
+    legend = parse_speaker_legend(doc)
+    assert "SPEAKER_00" in legend
+    assert legend["SPEAKER_00"] == "Speaker A"
