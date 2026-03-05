@@ -162,6 +162,11 @@ class Pipeline:
                     "diarize",
                     lambda: diarize_stage(result, audio, hf_token, config.min_speakers, config.max_speakers),
                 )
+            else:
+                self.reporter.on_stage_start(StageStart(stage="diarize", eta_s=None))
+                self.reporter.on_stage_complete(
+                    StageComplete(stage="diarize", time_s=0.0, extra={"skipped": "HF_TOKEN not set"})
+                )
 
         # Stage 5: Corrections (optional)
         corrections_path = config.corrections_path or str(

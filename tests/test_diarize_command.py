@@ -163,6 +163,37 @@ def test_diarize_preserves_user_text_edits(tmp_path):
     assert "Speaker B:" in result
 
 
+def test_diarize_creates_backup(tmp_path):
+    """Diarize should create .bak backup of meeting note before overwriting."""
+    md_content = textwrap.dedent("""\
+        ---
+        title: test
+        audio_file: meeting.wav
+        audio_data: .audio-data/meeting.json
+        ---
+
+        ## Transcript
+
+        [00:00] Original text
+    """)
+    meeting_md = tmp_path / "meetings" / "meeting.md"
+    meeting_md.parent.mkdir(parents=True)
+    meeting_md.write_text(md_content)
+
+    stored_json = {"audio_file": "meeting.wav", "segments": [{"start": 0.0, "end": 2.0, "text": "Original text"}]}
+    audio_data_dir = tmp_path / "meetings" / ".audio-data"
+    audio_data_dir.mkdir(parents=True)
+    (audio_data_dir / "meeting.json").write_text(json.dumps(stored_json))
+
+    diarized = [{"start": 0.0, "end": 2.0, "text": "Original text", "speaker": "SPEAKER_00"}]
+    with patch("audio_transcribe.stages.diarize_update.run_diarization", return_value=diarized):
+        diarize_and_update(meeting_md, force=True)
+
+    bak = meeting_md.with_suffix(".md.bak")
+    assert bak.exists()
+    assert "Original text" in bak.read_text()
+
+
 def test_diarize_timestamp_collision(tmp_path):
     """Segments within the same second should get correct speaker labels."""
     md_content = textwrap.dedent("""\
