@@ -35,7 +35,7 @@ def preprocess(
 
     cmd = ["ffmpeg", "-y", "-i", input_path, "-af", ",".join(filters), output_path]
     print(f"Preprocessing: {input_path} → {output_path}", file=sys.stderr)
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     if proc.returncode != 0:
         print(proc.stderr, file=sys.stderr)
         raise RuntimeError("FFmpeg failed")
