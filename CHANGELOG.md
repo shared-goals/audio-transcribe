@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-05
+
+### Fixed
+- Installer pins Python 3.12 explicitly; fix curl piped to zsh stdin interleaving
+- Mirror script now pushes tags; fix zsh PATH variable name collision
+
 ## [0.2.0] - 2026-03-05
 
 First distributable release. Summarizes all work from Phases 1-5.

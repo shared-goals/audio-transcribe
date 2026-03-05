@@ -129,6 +129,14 @@ Sequential execution is intentional — Whisper (~6 GB) unloads before Ollama/Ge
 
 Do not wrap or break lines in markdown files. Write each paragraph or list item as a single long line.
 
+## Release & Changelog
+
+This project uses [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/). Version is tracked in two places: `pyproject.toml` and `audio_transcribe/__init__.py`.
+
+**Per-commit rule**: When committing a `fix:`, `feat:`, or breaking change, also add a line to the `[Unreleased]` section of `CHANGELOG.md` under the appropriate heading (`### Added`, `### Fixed`, `### Changed`, `### Removed`). This keeps the changelog current while context is fresh.
+
+**Releasing**: Use `/release` to bump version, stamp changelog, commit, tag, and optionally push. The skill auto-detects the bump level from commit prefixes (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE` → major) and lets you override.
+
 ## Git Conventions
 
 Do not include `Co-Authored-By` lines in commit messages.

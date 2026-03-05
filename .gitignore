@@ -150,6 +150,7 @@ cython_debug/
 
 # Claude Code session data
 .claude/
+!.claude/commands/
 
 # macOS
 .DS_Store
