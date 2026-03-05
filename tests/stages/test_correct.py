@@ -96,3 +96,12 @@ def test_learn_corrections_no_diff():
     corrected = ["привет мир"]
     learned = learn_corrections(original, corrected)
     assert len(learned) == 0
+
+
+def test_learn_corrections_unequal_word_count():
+    """Replacements with different word counts should be captured as phrases."""
+    original = ["в общем то да"]
+    corrected = ["вообще да"]
+    learned = learn_corrections(original, corrected)
+    assert "в общем то" in learned
+    assert learned["в общем то"] == "вообще"
