@@ -122,9 +122,9 @@ def diarize_and_update(
                 after_bracket = line.split("] ", 1)
                 if len(after_bracket) == 2:
                     # Strip all stacked speaker prefixes (e.g. "Speaker A: Unknown: text" → "text")
-                    _pfx = re.compile(r"^(?:Speaker [A-Z]|SPEAKER_\d+|Unknown|None):\s+")
+                    _pfx = re.compile(r"^(?:Speaker [A-Z]{1,2}|SPEAKER_\d+|Unknown|None):\s+")
                     text_part = after_bracket[1]
-                    while _pfx.match(text_part):
+                    if _pfx.match(text_part):
                         text_part = _pfx.sub("", text_part, count=1)
                     out_line = f"[{line_ts}] {speaker}: {text_part}"
         new_lines.append(out_line)

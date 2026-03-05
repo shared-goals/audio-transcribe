@@ -19,6 +19,15 @@ def format_time(seconds: float) -> str:
     return f"{m:02d}:{s:02d}"
 
 
+def _speaker_label(idx: int) -> str:
+    """Generate speaker label: A, B, ..., Z, AA, AB, ..."""
+    if idx < 26:
+        return f"Speaker {chr(65 + idx)}"
+    first = chr(65 + (idx // 26) - 1)
+    second = chr(65 + (idx % 26))
+    return f"Speaker {first}{second}"
+
+
 def build_speaker_legend(segments: list[dict[str, Any]]) -> dict[str, str]:
     """Map speaker IDs to friendly labels in order of first appearance.
 
@@ -29,7 +38,7 @@ def build_speaker_legend(segments: list[dict[str, Any]]) -> dict[str, str]:
     for seg in segments:
         speaker = seg.get("speaker", "UNKNOWN")
         if speaker not in seen and speaker != "UNKNOWN":
-            seen[speaker] = f"Speaker {chr(65 + label_idx)}"
+            seen[speaker] = _speaker_label(label_idx)
             label_idx += 1
     return seen
 
