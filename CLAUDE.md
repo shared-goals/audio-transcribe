@@ -65,10 +65,6 @@ audio-transcribe recommend input.m4a
 # Learn corrections from an edited transcript
 audio-transcribe learn corrected-transcript.md
 
-# Test Ollama LLM connectivity and Russian summarization
-uv run test_ollama.py
-uv run test_ollama.py --list-models
-uv run test_ollama.py -m qwen2.5:14b
 ```
 
 ## Critical M4 Constraint
@@ -101,22 +97,22 @@ uv run test_ollama.py -m qwen2.5:14b
 ## Package Structure
 
 `audio_transcribe/` Python package:
-- `stages/` — preprocess, transcribe, align, diarize, format, correct
+- `stages/` — preprocess, transcribe, align, diarize, format, correct, diarize_update, identify, update
+- `markdown/` — parser (MeetingDoc), updater (sections, frontmatter, speaker mapping)
+- `speakers/` — embeddings (pyannote wespeaker), database (file-based voice DB)
 - `progress/` — events, json_reporter (JSONL), tui (rich.live)
 - `stats/` — store (history.json), estimator (ETA), recommender, hardware
 - `quality/` — scorecard (graded quality metrics)
 
-Remaining utility script: `test_ollama.py`.
-
 ## Current Phase & Roadmap
 
-**Phase 3 (Unified CLI)** — complete.
+**Phases 1–4** — complete. **Phase 5 (Enhancements)** — active (~90%).
 
-Unified `audio-transcribe` CLI replaces old loose scripts.
+Completed: unified CLI, reactive pipeline, task extraction, people cards, speakers legend, auto-diarization, meetings index.
 
-Planned phases:
-- **Phase 4**: Enhancements — task extraction, people cards, file watcher
-- **Phase 5**: Local LLM fallback — Ollama/Gemma offline pipeline
+Remaining:
+- **Phase 5**: File watcher, error handling, template system
+- **Phase 6**: Local LLM fallback — Ollama/Gemma offline pipeline
 
 Vault lives at `/Users/gnezim/_projects/gnezim/knowledge/`. Project spec at `knowledge/projects/personal/audio-transcribe/`.
 
