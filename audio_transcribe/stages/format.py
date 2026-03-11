@@ -135,6 +135,7 @@ def format_meeting_note(data: dict[str, Any], audio_data_path: str) -> str:
 
     # Build frontmatter
     fm: dict[str, object] = {
+        "type": "meeting",
         "title": f"{date_str} meeting",
         "date": date_str,
         "duration": format_time(duration),

@@ -41,7 +41,8 @@ def _force_quote_wiki_links(fm: dict[str, object]) -> dict[str, object]:
     speakers = result.get("speakers")
     if isinstance(speakers, dict):
         result["speakers"] = {
-            k: _QuotedStr(v) if isinstance(v, str) and "[[" in v else v
+            _QuotedStr(k) if isinstance(k, str) and "[[" in k else k:
+            _QuotedStr(v) if isinstance(v, str) and "[[" in v else v
             for k, v in speakers.items()
         }
     return result
