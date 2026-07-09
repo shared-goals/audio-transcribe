@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
 from datetime import date
 from pathlib import Path
 
@@ -10,6 +12,11 @@ import numpy as np
 from numpy.typing import NDArray
 
 from audio_transcribe.speakers.embeddings import cosine_distance
+from audio_transcribe.util import atomic_np_save, atomic_write_text
+
+logger = logging.getLogger(__name__)
+
+_EMBEDDING_DIM = 256
 
 
 class SpeakerDB:
@@ -36,34 +43,44 @@ class SpeakerDB:
         return {}
 
     def _save_index(self) -> None:
-        self._index_path.write_text(
-            json.dumps(self._index, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_text(self._index_path, json.dumps(self._index, ensure_ascii=False, indent=2))
 
     def _embedding_path(self, name: str) -> Path:
-        safe_name = self._normalize(name).replace(" ", "_")
-        return self._dir / f"{safe_name}.npy"
+        """Get or generate a safe filename for a speaker embedding."""
+        key = self._normalize(name)
+        # Return existing filename if already indexed
+        if key in self._index and "file" in self._index[key]:
+            return self._dir / str(self._index[key]["file"])
+        # Generate new safe filename
+        safe = re.sub(r"[^\w\-]", "_", key) or "_unknown"
+        counter = 1
+        while (self._dir / f"{safe}_{counter:02d}.npy").exists():
+            counter += 1
+        return self._dir / f"{safe}_{counter:02d}.npy"
 
     def has_speaker(self, name: str) -> bool:
         return self._normalize(name) in self._index
 
     def enroll(self, name: str, embedding: NDArray[np.float32]) -> None:
         """Add or update a speaker's embedding. Averages with existing if present."""
+        if embedding.shape != (_EMBEDDING_DIM,):
+            msg = f"Expected embedding dimension ({_EMBEDDING_DIM},), got {embedding.shape}"
+            raise ValueError(msg)
         key = self._normalize(name)
         if key in self._index:
             existing = self.get_embedding(name)
             raw_count = self._index[key].get("samples", 1)
             count = int(raw_count) if isinstance(raw_count, (int, float, str)) else 1
             averaged = (existing * count + embedding) / (count + 1)
-            np.save(self._embedding_path(name), averaged)
+            atomic_np_save(self._embedding_path(name), averaged)
             self._index[key]["samples"] = count + 1
             self._index[key]["last_seen"] = str(date.today())
         else:
-            np.save(self._embedding_path(name), embedding)
+            path = self._embedding_path(name)
+            atomic_np_save(path, embedding)
             self._index[key] = {
                 "display_name": name,
-                "file": self._embedding_path(name).name,
+                "file": path.name,
                 "samples": 1,
                 "last_seen": str(date.today()),
             }
@@ -83,6 +100,12 @@ class SpeakerDB:
         results: list[tuple[str, float]] = []
         for key, meta in self._index.items():
             stored = np.load(self._dir / str(meta["file"])).astype(np.float32)
+            if stored.shape != (_EMBEDDING_DIM,):
+                logger.warning(
+                    "Skipping speaker %s: embedding shape %s, expected (%d,)",
+                    key, stored.shape, _EMBEDDING_DIM,
+                )
+                continue
             dist = cosine_distance(query, stored)
             if dist < threshold:
                 display_name = str(meta.get("display_name", key))

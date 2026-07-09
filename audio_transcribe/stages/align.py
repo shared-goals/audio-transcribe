@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import gc
-import sys
+import logging
 import time
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def align(
@@ -15,7 +17,7 @@ def align(
     import whisperx
 
     label = align_model.split("/")[-1] if align_model else "default"
-    print(f"[2/3] Aligning word timestamps ({label})...", file=sys.stderr)
+    logger.debug("Aligning word timestamps (%s)", label)
     t = time.time()
     align_kwargs: dict[str, Any] = {"language_code": language, "device": "cpu"}
     if align_model:
@@ -29,7 +31,7 @@ def align(
         device="cpu",
         return_char_alignments=False,
     )
-    print(f"      Done in {time.time() - t:.1f}s", file=sys.stderr)
+    logger.debug("Alignment done in %.1fs", time.time() - t)
 
     del model_a
     gc.collect()

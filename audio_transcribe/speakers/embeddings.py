@@ -47,6 +47,7 @@ def _load_audio_ffmpeg(audio_path: str, sample_rate: int = 16000) -> dict[str, A
         ["ffmpeg", "-y", "-i", audio_path, "-ar", str(sample_rate), "-ac", "1", "-f", "f32le", "-"],
         capture_output=True,
         check=True,
+        timeout=300,
     )
     data = np.frombuffer(proc.stdout, dtype=np.float32).copy()
     waveform = torch.from_numpy(data).unsqueeze(0)  # (1, samples)
@@ -74,15 +75,15 @@ def extract_embedding(
 
 def extract_speaker_embedding(
     audio_file: str, segments: list[dict[str, Any]], speaker_id: str, min_duration: float = 1.0
-) -> NDArray[np.float32]:
+) -> NDArray[np.float32] | None:
     """Extract average embedding for a speaker from their segments.
 
-    Returns zero vector if no segments >= min_duration seconds.
+    Returns None if no segments >= min_duration seconds.
     """
     speaker_segs = [s for s in segments if s.get("speaker") == speaker_id]
     if not speaker_segs:
         logger.warning("Speaker %s has no segments, skipping embedding extraction", speaker_id)
-        return np.zeros(256, dtype=np.float32)
+        return None
 
     # Preload audio once for all segments to avoid repeated ffmpeg decoding
     audio_preloaded = _load_audio_ffmpeg(audio_file)
@@ -101,7 +102,7 @@ def extract_speaker_embedding(
             speaker_id,
             min_duration,
         )
-        return np.zeros(256, dtype=np.float32)
+        return None
 
     mean_arr: NDArray[np.float32] = np.mean(embeddings, axis=0).astype(np.float32)
     return mean_arr

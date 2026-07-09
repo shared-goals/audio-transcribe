@@ -11,17 +11,27 @@ from typing import Any
 import yaml
 
 
-def load_corrections(path: str) -> dict[str, Any]:
-    """Load corrections from a YAML file. Returns empty structure if file doesn't exist."""
+def load_corrections(path: str, language: str = "ru") -> dict[str, Any]:
+    """Load corrections from YAML. Supports flat (legacy) and language-scoped format."""
     p = Path(path)
     if not p.exists():
         return {"substitutions": {}, "patterns": []}
     data = yaml.safe_load(p.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         return {"substitutions": {}, "patterns": []}
+    # Legacy flat format
+    if "substitutions" in data or "patterns" in data:
+        return {
+            "substitutions": data.get("substitutions") or {},
+            "patterns": data.get("patterns") or [],
+        }
+    # Language-scoped format
+    lang_data = data.get(language, {})
+    if not isinstance(lang_data, dict):
+        return {"substitutions": {}, "patterns": []}
     return {
-        "substitutions": data.get("substitutions") or {},
-        "patterns": data.get("patterns") or [],
+        "substitutions": lang_data.get("substitutions") or {},
+        "patterns": lang_data.get("patterns") or [],
     }
 
 
@@ -84,9 +94,14 @@ def learn_corrections(original: list[str], corrected: list[str]) -> dict[str, st
 
         matcher = difflib.SequenceMatcher(None, orig_words, corr_words)
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-            if tag == "replace" and (i2 - i1) == (j2 - j1):
-                for orig_w, corr_w in zip(orig_words[i1:i2], corr_words[j1:j2], strict=True):
-                    if orig_w != corr_w:
-                        learned[orig_w] = corr_w
+            if tag == "replace":
+                if (i2 - i1) == (j2 - j1):
+                    for orig_w, corr_w in zip(orig_words[i1:i2], corr_words[j1:j2], strict=True):
+                        if orig_w != corr_w:
+                            learned[orig_w] = corr_w
+                else:
+                    orig_phrase = " ".join(orig_words[i1:i2])
+                    corr_phrase = " ".join(corr_words[j1:j2])
+                    learned[orig_phrase] = corr_phrase
 
     return learned

@@ -7,12 +7,11 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
-
 from audio_transcribe.markdown.parser import parse_meeting
 from audio_transcribe.markdown.updater import extract_wiki_links, replace_section, set_frontmatter
 from audio_transcribe.speakers import embeddings as _embeddings
 from audio_transcribe.stages.format import build_speaker_legend, format_time
+from audio_transcribe.stages.loader import load_audio_data
 
 if TYPE_CHECKING:
     from audio_transcribe.speakers.database import SpeakerDB
@@ -62,6 +61,11 @@ def diarize_and_update(
     If db is provided and frontmatter has [[wiki-link]] speakers, enroll them.
     """
     md_text = meeting_path.read_text(encoding="utf-8")
+
+    # Backup before overwrite
+    bak_path = meeting_path.with_suffix(".md.bak")
+    bak_path.write_text(md_text, encoding="utf-8")
+
     doc = parse_meeting(md_text)
 
     # Check if already diarized
@@ -75,9 +79,8 @@ def diarize_and_update(
         pre_wiki_links = extract_wiki_links({str(k): str(v) for k, v in pre_speakers.items()})
 
     # Load stored JSON
-    audio_data_rel = str(doc.frontmatter.get("audio_data", ""))
-    json_path = meeting_path.parent / audio_data_rel
-    stored = json.loads(json_path.read_text(encoding="utf-8"))
+    stored = load_audio_data(meeting_path, doc)
+    json_path = meeting_path.parent / str(doc.frontmatter.get("audio_data", ""))
 
     audio_file: str = audio_file_override if audio_file_override is not None else str(
         doc.frontmatter.get("audio_file", stored.get("audio_file", ""))
@@ -98,13 +101,16 @@ def diarize_and_update(
     speaker_lines = [f"- **{label}**: {sid}" for sid, label in legend.items()]
     speakers_content = "\n".join(speaker_lines)
 
-    # Build timestamp → speaker label mapping from diarized segments
-    ts_to_speaker: dict[str, str] = {}
+    # Build timestamp → speaker label mapping from diarized segments.
+    # Multiple segments can share the same formatted timestamp (sub-second
+    # differences get truncated), so we collect *all* entries per timestamp
+    # and pop them in order when matching transcript lines.
+    ts_to_speakers: dict[str, list[tuple[str, str]]] = {}
     for seg in diarized_segments:
         ts = format_time(float(seg.get("start", 0.0)))
         speaker_id = str(seg.get("speaker", ""))
         if speaker_id and speaker_id in legend:
-            ts_to_speaker[ts] = legend[speaker_id]
+            ts_to_speakers.setdefault(ts, []).append((legend[speaker_id], str(seg.get("text", ""))))
 
     # Preserve existing transcript text; only add speaker label prefixes
     existing_transcript = doc.sections.get("Transcript", "")
@@ -112,16 +118,18 @@ def diarize_and_update(
     for line in existing_transcript.split("\n"):
         line_ts = _match_timestamp(line)
         out_line = line
-        if line_ts and line_ts in ts_to_speaker:
-            speaker = ts_to_speaker[line_ts]
-            after_bracket = line.split("] ", 1)
-            if len(after_bracket) == 2:
-                # Strip all stacked speaker prefixes (e.g. "Speaker A: Unknown: text" → "text")
-                _pfx = re.compile(r"^(?:Speaker [A-Z]|SPEAKER_\d+|Unknown|None):\s+")
-                text_part = after_bracket[1]
-                while _pfx.match(text_part):
-                    text_part = _pfx.sub("", text_part, count=1)
-                out_line = f"[{line_ts}] {speaker}: {text_part}"
+        if line_ts and line_ts in ts_to_speakers:
+            entries = ts_to_speakers[line_ts]
+            if entries:
+                speaker = entries.pop(0)[0]
+                after_bracket = line.split("] ", 1)
+                if len(after_bracket) == 2:
+                    # Strip all stacked speaker prefixes (e.g. "Speaker A: Unknown: text" → "text")
+                    _pfx = re.compile(r"^(?:Speaker [A-Z]{1,2}|SPEAKER_\d+|Unknown|None):\s+")
+                    text_part = after_bracket[1]
+                    if _pfx.match(text_part):
+                        text_part = _pfx.sub("", text_part, count=1)
+                    out_line = f"[{line_ts}] {speaker}: {text_part}"
         new_lines.append(out_line)
     transcript_content = "\n".join(new_lines)
 
@@ -131,6 +139,10 @@ def diarize_and_update(
     doc = set_frontmatter(doc, "speakers", {sid: label for sid, label in legend.items()})
     doc = set_frontmatter(doc, "reanalyze", True)
 
+    from datetime import datetime
+
+    doc = set_frontmatter(doc, "diarization_ts", datetime.now().isoformat())
+
     meeting_path.write_text(doc.to_markdown(), encoding="utf-8")
 
     # Auto-enroll pre-existing wiki-link speakers if db provided
@@ -138,5 +150,5 @@ def diarize_and_update(
         for speaker_id, person_name in pre_wiki_links.items():
             if not db.has_speaker(person_name):
                 embedding = _embeddings.extract_speaker_embedding(audio_file, diarized_segments, speaker_id)
-                if np.any(embedding):
+                if embedding is not None:
                     db.enroll(person_name, embedding)

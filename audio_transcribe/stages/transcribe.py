@@ -12,10 +12,14 @@ import warnings
 import numpy as np
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
+logging.getLogger("whisperx").setLevel(logging.WARNING)
+logging.getLogger("lightning.pytorch.utilities.migration.utils").setLevel(logging.WARNING)
+
 # Suppress third-party noise that doesn't affect pipeline functionality
 warnings.filterwarnings("ignore", message="torchcodec is not installed correctly", category=UserWarning)
 warnings.filterwarnings("ignore", message="Lightning automatically upgraded", category=UserWarning)
-logging.getLogger("whisperx").setLevel(logging.WARNING)
 
 # Maps whisper model size names to mlx-community HuggingFace repos (Apple Silicon MLX backend)
 MLX_MODEL_MAP: dict[str, str] = {
@@ -59,7 +63,7 @@ def _clear_mlx_cache() -> None:
 def transcribe_mlx(audio_path: str, model_size: str, language: str) -> tuple[dict[str, Any], Any]:
     """Transcribe using mlx-whisper (Apple Silicon GPU backend)."""
     import mlx_whisper
-    import whisperx  # needed for load_audio — returns float32 numpy array at 16kHz
+    import whisperx  # needed for load_audio - returns float32 numpy array at 16kHz
 
     mlx_repo = MLX_MODEL_MAP.get(model_size)
     if mlx_repo is None:

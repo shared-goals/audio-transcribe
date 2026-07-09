@@ -61,8 +61,10 @@ def test_parse_speakers_mapping():
         [00:00] Hello
     """)
     doc = parse_meeting(md)
-    assert doc.frontmatter["speakers"]["SPEAKER_00"] == "[[Andrey]]"
-    assert doc.frontmatter["speakers"]["SPEAKER_01"] == "Speaker B"
+    speakers = doc.frontmatter["speakers"]
+    assert isinstance(speakers, dict)
+    assert speakers["SPEAKER_00"] == "[[Andrey]]"
+    assert speakers["SPEAKER_01"] == "Speaker B"
 
 
 def test_parse_no_frontmatter():
@@ -111,8 +113,10 @@ def test_wiki_link_roundtrip_through_yaml():
     """)
     doc = parse_meeting(md)
     doc2 = parse_meeting(doc.to_markdown())
-    assert doc2.frontmatter["speakers"]["SPEAKER_00"] == "[[Andrey]]"
-    assert doc2.frontmatter["speakers"]["SPEAKER_01"] == "[[Maria]]"
+    speakers2 = doc2.frontmatter["speakers"]
+    assert isinstance(speakers2, dict)
+    assert speakers2["SPEAKER_00"] == "[[Andrey]]"
+    assert speakers2["SPEAKER_01"] == "[[Maria]]"
 
 
 def test_section_order_enforced():

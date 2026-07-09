@@ -2,8 +2,14 @@
 
 from unittest.mock import MagicMock, patch
 
-from audio_transcribe.pipeline import Pipeline, PipelineConfig
+import pytest
+
+from audio_transcribe.pipeline import Pipeline, PipelineConfig, PipelineError
+from audio_transcribe.preflight import PreflightResult
 from audio_transcribe.progress.events import StageStart
+from audio_transcribe.stats.store import StatsStore
+
+_PREFLIGHT_OK = PreflightResult()  # no errors, no warnings
 
 # Common patches for all pipeline tests — mock all external stages
 _STAGE_PATCHES = {
@@ -62,6 +68,7 @@ def test_pipeline_emits_events():
     pipeline = Pipeline(reporter=reporter)
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=_STAGE_PATCHES["preprocess_stage"]),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
         patch("audio_transcribe.pipeline.align_stage", return_value=_STAGE_PATCHES["align_stage"]),
@@ -90,6 +97,7 @@ def test_pipeline_skips_align():
     pipeline = Pipeline(reporter=reporter)
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=_STAGE_PATCHES["preprocess_stage"]),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
         patch("audio_transcribe.pipeline.align_stage") as mock_align,
@@ -112,6 +120,7 @@ def test_pipeline_skips_diarize():
     pipeline = Pipeline(reporter=reporter)
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=_STAGE_PATCHES["preprocess_stage"]),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
         patch("audio_transcribe.pipeline.align_stage", return_value=_STAGE_PATCHES["align_stage"]),
@@ -146,6 +155,7 @@ def test_pipeline_writes_output(tmp_path):
     trans_rv = ({"segments": [seg], "text": "hi", "language": "ru"}, None)
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value="clean.wav"),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=trans_rv),
         patch("audio_transcribe.pipeline.align_stage", return_value={"segments": [seg]}),
@@ -171,6 +181,7 @@ def test_pipeline_writes_transcript(tmp_path):
     transcript_file = tmp_path / "transcript.md"
 
     with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=_STAGE_PATCHES["preprocess_stage"]),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
         patch("audio_transcribe.pipeline.align_stage", return_value=_STAGE_PATCHES["align_stage"]),
@@ -183,3 +194,60 @@ def test_pipeline_writes_transcript(tmp_path):
 
     assert transcript_file.exists()
     assert "Transcript" in transcript_file.read_text()
+
+
+def test_pipeline_persists_run_record(tmp_path):
+    """Pipeline should write a RunRecord to stats_store after successful run."""
+    events: list[tuple[str, object]] = []
+    reporter = _make_reporter(events)
+    store = StatsStore(tmp_path / "history.json")
+
+    with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
+        patch("audio_transcribe.pipeline.preprocess_stage", return_value=_STAGE_PATCHES["preprocess_stage"]),
+        patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
+        patch("audio_transcribe.pipeline.align_stage", return_value=_STAGE_PATCHES["align_stage"]),
+        patch("audio_transcribe.pipeline.build_output_stage", return_value=_STAGE_PATCHES["build_output_stage"]),
+        patch("audio_transcribe.pipeline.load_corrections", return_value=_STAGE_PATCHES["load_corrections"]),
+    ):
+        pipeline = Pipeline(reporter=reporter, stats_store=store)
+        config = PipelineConfig(audio_file="test.wav", skip_diarize=True, suppress_stdout_json=True)
+        pipeline.run(config)
+
+    records = store.load()
+    assert len(records) == 1
+    r = records[0]
+    assert r.config.model == "large-v3"
+    assert r.config.backend == "whisperx"
+    assert "preprocess" in r.stages
+    assert "transcribe" in r.stages
+    assert r.total_time_s >= 0
+
+
+def test_pipeline_wraps_stage_error():
+    """Stage exceptions should be wrapped in PipelineError with stage context."""
+    events: list[tuple[str, object]] = []
+    reporter = _make_reporter(events)
+    reporter.on_stage_error = lambda e: events.append(("stage_error", e))
+
+    with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
+        patch(
+            "audio_transcribe.pipeline.preprocess_stage",
+            side_effect=FileNotFoundError("test.wav not found"),
+        ),
+        patch("audio_transcribe.pipeline.transcribe_stage", return_value=_STAGE_PATCHES["transcribe_stage"]),
+        patch("audio_transcribe.pipeline.align_stage", return_value=_STAGE_PATCHES["align_stage"]),
+        patch("audio_transcribe.pipeline.diarize_stage", return_value=_STAGE_PATCHES["diarize_stage"]),
+        patch("audio_transcribe.pipeline.build_output_stage", return_value=_STAGE_PATCHES["build_output_stage"]),
+        patch("audio_transcribe.pipeline.load_corrections", return_value=_STAGE_PATCHES["load_corrections"]),
+    ):
+        pipeline = Pipeline(reporter=reporter)
+        config = PipelineConfig(audio_file="test.wav", suppress_stdout_json=True)
+        with pytest.raises(PipelineError) as exc_info:
+            pipeline.run(config)
+
+    assert exc_info.value.stage == "preprocess"
+    assert "not found" in str(exc_info.value)
+    error_events = [e for name, e in events if name == "stage_error"]
+    assert len(error_events) == 1

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Purpose
 
-End-to-end **local** pipeline that processes recorded meetings into structured Obsidian notes. Runs entirely on MacBook Air M4 (24 GB RAM). No cloud APIs.
+End-to-end **local** pipeline that processes recorded meetings into structured Obsidian notes. Runs entirely on macOS. No cloud APIs.
 
 Full pipeline:
 ```
@@ -65,10 +65,6 @@ audio-transcribe recommend input.m4a
 # Learn corrections from an edited transcript
 audio-transcribe learn corrected-transcript.md
 
-# Test Ollama LLM connectivity and Russian summarization
-uv run test_ollama.py
-uv run test_ollama.py --list-models
-uv run test_ollama.py -m qwen2.5:14b
 ```
 
 ## Critical M4 Constraint
@@ -101,22 +97,25 @@ uv run test_ollama.py -m qwen2.5:14b
 ## Package Structure
 
 `audio_transcribe/` Python package:
-- `stages/` — preprocess, transcribe, align, diarize, format, correct
-- `progress/` — events, json_reporter (JSONL), tui (rich.live)
+- `stages/` — preprocess, transcribe, align, diarize, format, correct, diarize_update, identify, update, loader
+- `markdown/` — parser (MeetingDoc), updater (sections, frontmatter, speaker mapping)
+- `speakers/` — embeddings (pyannote wespeaker), database (file-based voice DB)
+- `progress/` — events, json_reporter (JSONL), tui (rich.live), composite
 - `stats/` — store (history.json), estimator (ETA), recommender, hardware
 - `quality/` — scorecard (graded quality metrics)
-
-Remaining utility script: `test_ollama.py`.
+- `preflight.py` — pre-flight validation (ffmpeg, input file, HF_TOKEN)
+- `util.py` — atomic file writes (crash-safe)
+- `log.py` — centralized logging configuration
 
 ## Current Phase & Roadmap
 
-**Phase 3 (Unified CLI)** — complete.
+**Phases 1–4** — complete. **Phase 5 (Enhancements)** — active (~95%).
 
-Unified `audio-transcribe` CLI replaces old loose scripts.
+Completed: unified CLI, reactive pipeline, task extraction, people cards, speakers legend, auto-diarization, meetings index, pipeline hardening.
 
-Planned phases:
-- **Phase 4**: Enhancements — task extraction, people cards, file watcher
-- **Phase 5**: Local LLM fallback — Ollama/Gemma offline pipeline
+Remaining:
+- **Phase 5**: File watcher, template system
+- **Phase 6**: Local LLM fallback — Ollama/Gemma offline pipeline
 
 Vault lives at `/Users/gnezim/_projects/gnezim/knowledge/`. Project spec at `knowledge/projects/personal/audio-transcribe/`.
 
@@ -125,6 +124,18 @@ Vault lives at `/Users/gnezim/_projects/gnezim/knowledge/`. Project spec at `kno
 ## Memory Budget (24 GB M4)
 
 Sequential execution is intentional — Whisper (~6 GB) unloads before Ollama/Gemma 27B (~16 GB) loads. Do not attempt to run both simultaneously.
+
+## Markdown Style
+
+Do not wrap or break lines in markdown files. Write each paragraph or list item as a single long line.
+
+## Release & Changelog
+
+This project uses [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/). Version is tracked in two places: `pyproject.toml` and `audio_transcribe/__init__.py`.
+
+**Per-commit rule**: When committing a `fix:`, `feat:`, or breaking change, also add a line to the `[Unreleased]` section of `CHANGELOG.md` under the appropriate heading (`### Added`, `### Fixed`, `### Changed`, `### Removed`). This keeps the changelog current while context is fresh.
+
+**Releasing**: Use `/release` to bump version, stamp changelog, commit, tag, and optionally push. The skill auto-detects the bump level from commit prefixes (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE` → major) and lets you override.
 
 ## Git Conventions
 

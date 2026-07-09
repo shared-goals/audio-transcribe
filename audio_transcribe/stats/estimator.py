@@ -17,17 +17,25 @@ class EstimateResult:
 
 
 def estimate_stage(
-    stage: str, audio_duration_s: float, history: list[RunRecord]
+    stage: str, audio_duration_s: float, history: list[RunRecord], backend: str | None = None
 ) -> EstimateResult | None:
     """Estimate stage duration from historical data using linear regression.
 
+    When backend is specified, only history from the same backend is used
+    (different backends have very different performance characteristics).
     Returns None if fewer than 3 relevant data points exist.
     """
-    # Filter records that have this stage
+    # Filter records that have this stage (prefer same backend, fall back to all)
     points: list[tuple[float, float]] = []
-    for r in history:
-        if stage in r.stages:
-            points.append((r.input.duration_s, r.stages[stage].time_s))
+    if backend:
+        for r in history:
+            if stage in r.stages and r.config.backend == backend:
+                points.append((r.input.duration_s, r.stages[stage].time_s))
+    if len(points) < 3:
+        points = []
+        for r in history:
+            if stage in r.stages:
+                points.append((r.input.duration_s, r.stages[stage].time_s))
 
     if len(points) < 3:
         return None
