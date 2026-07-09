@@ -40,6 +40,18 @@ def preprocess(
         print(proc.stderr, file=sys.stderr)
         raise RuntimeError("FFmpeg failed")
 
-    size_mb = Path(output_path).stat().st_size / 1_048_576
+    out_size = Path(output_path).stat().st_size
+    # silenceremove can strip everything if the file is all silence/noise —
+    # a 16kHz mono WAV needs at least ~44 bytes header + some samples.
+    # 1 KB (~63 samples) is the safety floor.
+    if out_size < 1024:
+        raise RuntimeError(
+            f"Preprocessed audio is empty ({out_size} bytes) — "
+            "silenceremove removed all content. "
+            "Source file may be silence-only, corrupted, or contain no speech-like audio. "
+            "Try with --no-silence-remove or raise silence_duration threshold."
+        )
+
+    size_mb = out_size / 1_048_576
     print(f"Done: {output_path} ({size_mb:.1f} MB)", file=sys.stderr)
     return output_path

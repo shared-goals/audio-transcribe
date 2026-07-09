@@ -8,6 +8,8 @@ import logging
 import sys
 import time
 import warnings
+
+import numpy as np
 from typing import Any
 
 # Suppress third-party noise that doesn't affect pipeline functionality
@@ -124,9 +126,22 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
     # Load audio (float32 numpy array at 16kHz)
     audio: Any = whisperx.load_audio(audio_path)
 
+    # --- Audio shape sanity-check before pyannote VAD ---
+    audio = np.asarray(audio, dtype=np.float32)
+    if audio.ndim != 1:
+        audio = audio.reshape(-1)
+    if audio.size == 0:
+        raise ValueError(f"Preprocessed audio has 0 samples (file may be corrupt): {audio_path}")
+    # pyannote expects (channels, time) with channels <= time; unsqueeze gives (1, n)
+    waveform: Any = torch.from_numpy(audio).unsqueeze(0)
+    if waveform.ndim != 2 or waveform.shape[0] > waveform.shape[1]:
+        raise ValueError(
+            f"Invalid waveform shape after unsqueeze: {waveform.shape} "
+            f"(expected (channels, time) with channels <= time; audio samples: {audio.size})"
+        )
+
     # Run pyannote VAD to find speech regions
     vad_pipeline: Any = load_vad_model(device="cpu")
-    waveform: Any = torch.from_numpy(audio).unsqueeze(0)
     vad_result: Any = vad_pipeline({"waveform": waveform, "sample_rate": SAMPLE_RATE})
 
     # Merge speech regions into <=30s chunks
