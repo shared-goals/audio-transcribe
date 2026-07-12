@@ -1,9 +1,7 @@
 name: Mirror to GitHub
 
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
+  workflow_dispatch:
 
 jobs:
   mirror:
@@ -16,11 +14,13 @@ jobs:
 
       - name: Remove private files
         run: |
-          rm -rf docs/plans CLAUDE.md .claude .gitea scripts
+          TIP_TAGS=$(git tag --points-at HEAD)
+          rm -rf docs/plans CLAUDE.md .claude .gitea scripts/mirror-to-github.sh
           git config user.name "mirror-bot"
           git config user.email "mirror-bot@noreply"
           git add -A
           git commit --amend --no-edit
+          for tag in $TIP_TAGS; do git tag --force "$tag" HEAD; done
 
       - name: Scan for PII
         run: |
@@ -44,4 +44,4 @@ jobs:
           ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
           git remote add github git@github.com:shared-goals/audio-transcribe.git
           git push github main --force
-          git push github --tags --force
+          for tag in $(git tag --points-at HEAD); do git push github "refs/tags/$tag" --force; done

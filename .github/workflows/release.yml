@@ -1,0 +1,41 @@
+name: Release artifacts
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    if: github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: astral-sh/setup-uv@v8.3.2
+      - run: uv build
+      - name: Generate CycloneDX SBOM
+        run: |
+          uv export --locked --all-extras --no-dev --no-hashes --no-emit-project --output-file dist/requirements.txt
+          uvx --from cyclonedx-bom cyclonedx-py requirements dist/requirements.txt \
+            --pyproject pyproject.toml --output-reproducible --output-format JSON \
+            --output-file dist/audio-transcribe-${GITHUB_REF_NAME}.cdx.json
+      - name: Generate checksums
+        run: cd dist && sha256sum * > SHA256SUMS
+      - uses: actions/attest-build-provenance@v4.1.1
+        with:
+          subject-path: "dist/*"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
+              --notes-file "docs/releases/${GITHUB_REF_NAME}.md" \
+              --title "audio-transcribe $GITHUB_REF_NAME"
+          fi

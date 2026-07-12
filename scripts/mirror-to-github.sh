@@ -7,12 +7,12 @@
 #   .claude/        — Claude Code project config
 #
 # The script creates a temporary clean clone, removes excluded paths,
-# and force-pushes to the GitHub remote.
+# retargets only release tags attached to the tip, and force-pushes the public tree.
 #
 # Usage: zsh scripts/mirror-to-github.sh
 set -e
 
-GITHUB_REMOTE="git@github.com:shared-goals/audio-transcribe.git"
+GITHUB_REMOTE="https://github.com/shared-goals/audio-transcribe.git"
 BRANCH="main"
 
 # Paths to exclude from the public mirror
@@ -21,7 +21,7 @@ EXCLUDE_PATHS=(
     "CLAUDE.md"
     ".claude"
     ".gitea"
-    "scripts"
+    "scripts/mirror-to-github.sh"
 )
 
 # PII patterns to scan for (fail-safe)
@@ -48,6 +48,7 @@ git -C "$CLONE" config user.name "mirror-bot"
 git -C "$CLONE" config user.email "mirror-bot@noreply"
 
 info "Removing excluded paths..."
+TIP_TAGS=("${(@f)$(git -C "$CLONE" tag --points-at HEAD)}")
 for p in "${EXCLUDE_PATHS[@]}"; do
     if [ -e "$CLONE/$p" ]; then
         rm -rf "$CLONE/$p"
@@ -58,6 +59,9 @@ done
 # Amend the tip commit to exclude private files (no extra mirror commit)
 git -C "$CLONE" add -A
 git -C "$CLONE" commit --quiet --amend --no-edit
+for tag in "${TIP_TAGS[@]}"; do
+    [[ -n "$tag" ]] && git -C "$CLONE" tag --force "$tag" HEAD
+done
 
 info "Scanning for PII leaks..."
 FOUND_PII=0
@@ -79,6 +83,8 @@ ok "PII scan clean"
 info "Pushing to GitHub..."
 git -C "$CLONE" remote add github "$GITHUB_REMOTE"
 git -C "$CLONE" push github "$BRANCH" --force
-git -C "$CLONE" push github --tags --force
+for tag in "${TIP_TAGS[@]}"; do
+    [[ -n "$tag" ]] && git -C "$CLONE" push github "refs/tags/$tag" --force
+done
 
 ok "Mirrored to $GITHUB_REMOTE"

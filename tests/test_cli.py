@@ -1,12 +1,17 @@
 """Tests for CLI commands using typer test client."""
 
 import os
+import re
 
 from typer.testing import CliRunner
 
 from audio_transcribe.cli import app
 
 runner = CliRunner()
+
+
+def _plain(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 def test_cli_help():
@@ -18,16 +23,17 @@ def test_cli_help():
 def test_cli_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.output.strip() == "0.4.0"
+    assert result.output.strip() == "0.5.0"
 
 
 def test_process_help():
     result = runner.invoke(app, ["process", "--help"])
     assert result.exit_code == 0
-    assert "--language" in result.output
-    assert "--model" in result.output
-    assert "--backend" in result.output
-    assert "--json" in result.output
+    output = _plain(result.output)
+    assert "--language" in output
+    assert "--model" in output
+    assert "--backend" in output
+    assert "--json" in output
 
 
 def test_process_missing_file():
@@ -38,7 +44,7 @@ def test_process_missing_file():
 def test_stats_help():
     result = runner.invoke(app, ["stats", "--help"])
     assert result.exit_code == 0
-    assert "--last" in result.output
+    assert "--last" in _plain(result.output)
 
 
 def test_recommend_help():

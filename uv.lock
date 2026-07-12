@@ -246,7 +246,7 @@ wheels = [
 
 [[package]]
 name = "audio-transcribe"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -256,9 +256,29 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+diarization = [
+    { name = "torch" },
+    { name = "torchaudio" },
+    { name = "torchcodec" },
+    { name = "whisperx" },
+]
 ml = [
     { name = "mlx-whisper" },
     { name = "numba" },
+    { name = "torch" },
+    { name = "torchaudio" },
+    { name = "torchcodec" },
+    { name = "whisperx" },
+]
+mlx = [
+    { name = "mlx-whisper" },
+    { name = "numba" },
+    { name = "torch" },
+    { name = "torchaudio" },
+    { name = "torchcodec" },
+    { name = "whisperx" },
+]
+whisperx = [
     { name = "torch" },
     { name = "torchaudio" },
     { name = "torchcodec" },
@@ -278,17 +298,31 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mlx-whisper", marker = "extra == 'ml'", specifier = ">=0.4.3,<0.5" },
+    { name = "mlx-whisper", marker = "extra == 'mlx'", specifier = ">=0.4.3,<0.5" },
     { name = "numba", marker = "extra == 'ml'", specifier = ">=0.66.0" },
+    { name = "numba", marker = "extra == 'mlx'", specifier = ">=0.66.0" },
     { name = "numpy", specifier = ">=2.1.0,<3" },
     { name = "pyyaml", specifier = ">=6.0.3,<7" },
     { name = "rich", specifier = ">=15.0.0,<16" },
+    { name = "torch", marker = "extra == 'diarization'", specifier = ">=2.8.0,<2.9" },
     { name = "torch", marker = "extra == 'ml'", specifier = ">=2.8.0,<2.9" },
+    { name = "torch", marker = "extra == 'mlx'", specifier = ">=2.8.0,<2.9" },
+    { name = "torch", marker = "extra == 'whisperx'", specifier = ">=2.8.0,<2.9" },
+    { name = "torchaudio", marker = "extra == 'diarization'", specifier = ">=2.8.0,<2.9" },
     { name = "torchaudio", marker = "extra == 'ml'", specifier = ">=2.8.0,<2.9" },
+    { name = "torchaudio", marker = "extra == 'mlx'", specifier = ">=2.8.0,<2.9" },
+    { name = "torchaudio", marker = "extra == 'whisperx'", specifier = ">=2.8.0,<2.9" },
+    { name = "torchcodec", marker = "extra == 'diarization'", specifier = ">=0.7.0,<0.8" },
     { name = "torchcodec", marker = "extra == 'ml'", specifier = ">=0.7.0,<0.8" },
+    { name = "torchcodec", marker = "extra == 'mlx'", specifier = ">=0.7.0,<0.8" },
+    { name = "torchcodec", marker = "extra == 'whisperx'", specifier = ">=0.7.0,<0.8" },
     { name = "typer", specifier = ">=0.26.8,<0.27" },
+    { name = "whisperx", marker = "extra == 'diarization'", specifier = ">=3.8.6,<3.9" },
     { name = "whisperx", marker = "extra == 'ml'", specifier = ">=3.8.6,<3.9" },
+    { name = "whisperx", marker = "extra == 'mlx'", specifier = ">=3.8.6,<3.9" },
+    { name = "whisperx", marker = "extra == 'whisperx'", specifier = ">=3.8.6,<3.9" },
 ]
-provides-extras = ["ml"]
+provides-extras = ["mlx", "whisperx", "diarization", "ml"]
 
 [package.metadata.requires-dev]
 dev = [

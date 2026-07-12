@@ -5,7 +5,6 @@ Converts any audio format to 16kHz mono PCM WAV.
 
 import logging
 import subprocess
-import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)

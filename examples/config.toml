@@ -1,0 +1,11 @@
+[profiles.default]
+language = "ru"
+model = "large-v3"
+backend = "mlx-vad"
+min_speakers = 2
+max_speakers = 6
+no_diarize = true
+
+[profiles.full]
+backend = "mlx-vad"
+no_diarize = false

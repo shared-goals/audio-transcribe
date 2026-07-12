@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import fcntl
 import os
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
 from numpy.typing import NDArray
@@ -35,3 +37,16 @@ def atomic_np_save(path: Path, arr: NDArray[Any]) -> None:
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+@contextmanager
+def file_lock(path: Path) -> Iterator[None]:
+    """Hold an advisory process lock for a state file."""
+    lock_path = path.with_name(f"{path.name}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

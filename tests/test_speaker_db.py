@@ -1,5 +1,6 @@
 """Tests for speaker embedding database."""
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
@@ -152,3 +153,14 @@ def test_match_skips_corrupt_embedding(tmp_path):
     query = np.random.rand(256).astype(np.float32)
     results = db.match(query)
     assert len(results) == 0  # Skipped due to dimension mismatch
+
+
+def test_concurrent_enrollment_preserves_all_speakers(tmp_path):
+    directory = tmp_path / "speakers"
+
+    def enroll(index: int) -> None:
+        SpeakerDB(directory).enroll(f"Speaker {index}", np.full(256, index, dtype=np.float32))
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(enroll, range(8)))
+    assert len(SpeakerDB(directory).list_speakers()) == 8

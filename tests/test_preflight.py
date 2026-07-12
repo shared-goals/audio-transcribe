@@ -11,7 +11,10 @@ def _module_available(_name: str) -> object:
 
 
 def test_check_missing_audio_file() -> None:
-    with patch("audio_transcribe.preflight.find_spec", side_effect=_module_available):
+    with (
+        patch("audio_transcribe.preflight.find_spec", side_effect=_module_available),
+        patch("audio_transcribe.preflight.shutil.which", return_value="/usr/bin/ffmpeg"),
+    ):
         result = check("/nonexistent/audio.wav")
     assert not result.ok
     assert any("not found" in e for e in result.errors)
@@ -20,7 +23,10 @@ def test_check_missing_audio_file() -> None:
 def test_check_valid_file(tmp_path):
     audio = tmp_path / "test.wav"
     audio.write_bytes(b"\x00" * 1024)
-    with patch("audio_transcribe.preflight.find_spec", side_effect=_module_available):
+    with (
+        patch("audio_transcribe.preflight.find_spec", side_effect=_module_available),
+        patch("audio_transcribe.preflight.shutil.which", return_value="/usr/bin/ffmpeg"),
+    ):
         result = check(str(audio))
     assert result.ok
 
@@ -38,7 +44,10 @@ def test_check_warns_missing_hf_token(tmp_path, monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
     audio = tmp_path / "test.wav"
     audio.write_bytes(b"\x00" * 1024)
-    with patch("audio_transcribe.preflight.find_spec", side_effect=_module_available):
+    with (
+        patch("audio_transcribe.preflight.find_spec", side_effect=_module_available),
+        patch("audio_transcribe.preflight.shutil.which", return_value="/usr/bin/ffmpeg"),
+    ):
         result = check(str(audio), skip_diarize=False)
     assert result.ok
     assert any("HF_TOKEN" in w for w in result.warnings)
