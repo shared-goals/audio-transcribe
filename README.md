@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/shared-goals/audio-transcribe/main/
 
 The installer handles Homebrew, ffmpeg, uv, the Python package, PATH setup, and HuggingFace token configuration.
 
-The installer uses the latest supported tagged release (`0.4.0`) and installs the optional ML stack. For a lightweight CLI-only development environment, use `uv sync`; for transcription backends, use `uv sync --extra ml`.
+The installer uses the latest supported tagged release (`0.5.0`) and installs the complete optional ML stack. For a lightweight CLI-only development environment, use `uv sync`. Backend-specific development installs use `uv sync --extra mlx`, `--extra whisperx`, or `--extra diarization`; `--extra ml` installs everything.
 
 ### Requirements
 
@@ -120,6 +120,46 @@ audio-transcribe learn corrected-transcript.md
 # JSON-lines output (no TUI, for scripting)
 audio-transcribe process recording.m4a --json
 ```
+
+### Profiles, resume, and templates
+
+Interrupted runs resume automatically from `~/.audio-transcribe/runs/`. Use `--force` for a clean run, `--restart-from align` to invalidate one stage and everything after it, or `--keep-workdir` to retain normalized audio.
+
+Profiles live in `~/.config/audio-transcribe/config.toml`:
+
+```toml
+[profiles.fast]
+language = "ru"
+model = "large-v3"
+backend = "mlx-vad"
+no_diarize = true
+
+[profiles.full]
+backend = "mlx-vad"
+no_diarize = false
+template = "~/templates/meeting.md"
+```
+
+Templates may use `{{title}}`, `{{meeting_note}}`, and `{{transcript}}`; at least one content placeholder is required.
+
+```zsh
+audio-transcribe process recording.m4a --profile fast
+```
+
+### Unattended worker
+
+```zsh
+audio-transcribe doctor
+audio-transcribe worker enqueue recording.m4a -o meetings/
+audio-transcribe worker run --once
+audio-transcribe worker run --watch incoming/ -o meetings/
+audio-transcribe worker status --json
+audio-transcribe worker retry 42
+```
+
+The queue is SQLite-backed and survives restarts. Failed jobs retry with exponential backoff and move to a visible dead-letter state after their attempt limit.
+
+For launchd, copy `scripts/com.gnezim.audio-transcribe-worker.plist.template`, replace its four placeholders, and point `__WORKER_SCRIPT__` at the executable `scripts/audio-transcribe-worker.sh`. `audio-transcribe worker status --json` is the health check; a running LaunchAgent alone is not considered healthy.
 
 ## Updates
 

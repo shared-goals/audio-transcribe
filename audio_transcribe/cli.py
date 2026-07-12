@@ -22,10 +22,14 @@ app = typer.Typer(name="audio-transcribe", help="Local audio transcription pipel
 
 speakers_app = typer.Typer(help="Manage known speaker voice embeddings.")
 app.add_typer(speakers_app, name="speakers")
+worker_app = typer.Typer(help="Manage the durable unattended transcription queue.")
+app.add_typer(worker_app, name="worker")
 
 _DEFAULT_HISTORY = Path.home() / ".audio-transcribe" / "history.json"
 _DEFAULT_CORRECTIONS = Path.home() / ".audio-transcribe" / "corrections.yaml"
 _HF_TOKEN_CACHE = Path.home() / ".cache" / "huggingface" / "token"
+_DEFAULT_STATE = Path.home() / ".audio-transcribe"
+_DEFAULT_QUEUE = _DEFAULT_STATE / "jobs.sqlite3"
 
 
 def _version_callback(value: bool) -> None:
@@ -76,15 +80,15 @@ def main(
 @app.command()
 def process(
     audio_file: Path = typer.Argument(..., help="Input audio file (WAV, M4A, MP3)"),
-    language: str = typer.Option("ru", "-l", "--language", help="Language code"),
-    model: str = typer.Option("large-v3", "-m", "--model", help="Whisper model size"),
-    backend: str = typer.Option(
-        "mlx-vad",
+    language: Optional[str] = typer.Option(None, "-l", "--language", help="Language code (profile default: ru)"),
+    model: Optional[str] = typer.Option(None, "-m", "--model", help="Whisper model size"),
+    backend: Optional[str] = typer.Option(
+        None,
         "--backend",
         help="mlx-vad: Apple Silicon + VAD (fastest) | mlx: Apple Silicon | whisperx: CPU (slowest)",
     ),
-    min_speakers: int = typer.Option(2, "--min-speakers", help="Minimum speakers for diarization"),
-    max_speakers: int = typer.Option(6, "--max-speakers", help="Maximum speakers for diarization"),
+    min_speakers: Optional[int] = typer.Option(None, "--min-speakers", help="Minimum speakers for diarization"),
+    max_speakers: Optional[int] = typer.Option(None, "--max-speakers", help="Maximum speakers for diarization"),
     align_model: Optional[str] = typer.Option(None, "--align-model", help="Custom alignment model HF repo"),
     no_align: bool = typer.Option(False, "--no-align", help="Skip alignment stage"),
     no_diarize: bool = typer.Option(False, "--no-diarize", help="Skip diarization stage"),
@@ -92,12 +96,20 @@ def process(
     output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output directory for meeting notes"),
     transcript: Optional[Path] = typer.Option(None, "--transcript", help="Output Markdown transcript path"),
     json_mode: bool = typer.Option(False, "--json", help="Machine-readable JSON-lines output (no TUI)"),
+    profile: str = typer.Option("default", "--profile", help="Named profile from config.toml"),
+    config_file: Optional[Path] = typer.Option(None, "--config", help="Configuration TOML path"),
+    template: Optional[Path] = typer.Option(None, "--template", help="Meeting-note template path"),
+    resume: bool = typer.Option(True, "--resume/--no-resume", help="Resume matching interrupted runs"),
+    force: bool = typer.Option(False, "--force", help="Ignore matching checkpoints"),
+    restart_from: Optional[str] = typer.Option(None, "--restart-from", help="Invalidate this stage and later stages"),
+    keep_workdir: bool = typer.Option(False, "--keep-workdir", help="Keep normalized audio after success"),
 ) -> None:
     """Fast pass: transcribe + align → meeting note. Use --full to include diarization."""
     if not audio_file.exists():
         typer.echo(f"Error: file not found: {audio_file}", err=True)
         raise typer.Exit(1)
 
+    from audio_transcribe.config import load_profile
     from audio_transcribe.pipeline import run_pipeline
     from audio_transcribe.progress.json_reporter import JsonReporter
     from audio_transcribe.progress.tui import TuiReporter
@@ -105,11 +117,24 @@ def process(
     from audio_transcribe.stats.store import StatsStore
     from audio_transcribe.util import atomic_write_text
 
+    try:
+        selected = load_profile(profile, config_file)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    language = language or selected.language
+    model = model or selected.model
+    backend = backend or selected.backend
+    min_speakers = min_speakers if min_speakers is not None else selected.min_speakers
+    max_speakers = max_speakers if max_speakers is not None else selected.max_speakers
+    align_model = align_model or selected.align_model
+    template = template or (Path(selected.template).expanduser() if selected.template else None)
+
     store = StatsStore(_DEFAULT_HISTORY)
     reporter = JsonReporter() if json_mode or not sys.stdout.isatty() else TuiReporter()
 
     # Fast pass by default; --full enables diarization; --no-diarize also forces skip
-    skip_diarize = no_diarize or not full
+    skip_diarize = no_diarize or (not full and selected.no_diarize)
 
     result = run_pipeline(
         audio_file=str(audio_file),
@@ -119,12 +144,17 @@ def process(
         min_speakers=min_speakers,
         max_speakers=max_speakers,
         align_model=align_model,
-        no_align=no_align,
+        no_align=no_align or selected.no_align,
         no_diarize=skip_diarize,
         corrections_path=str(_DEFAULT_CORRECTIONS),
         reporter=reporter,
         stats_store=store,
         estimator_history=store.load(),
+        resume=resume,
+        force=force,
+        restart_from=restart_from,
+        keep_workdir=keep_workdir,
+        state_dir=str(_DEFAULT_STATE),
     )
 
     # Determine output directory
@@ -140,6 +170,10 @@ def process(
     # Format and write meeting note
     relative_json = f".audio-data/{stem}.json"
     markdown = format_meeting_note(result, audio_data_path=relative_json)
+    if template:
+        from audio_transcribe.templates import render_template
+
+        markdown = render_template(template, markdown, stem, format_transcript(result))
     md_path = output_dir / f"{stem}.md"
     atomic_write_text(md_path, markdown)
 
@@ -151,6 +185,160 @@ def process(
         typer.echo(f"Meeting note: {md_path}", err=True)
         if transcript:
             typer.echo(f"Transcript:   {transcript}", err=True)
+
+
+@app.command()
+def doctor(
+    backend: str = typer.Option("mlx-vad", "--backend"),
+    json_mode: bool = typer.Option(False, "--json"),
+    state_dir: Path = typer.Option(_DEFAULT_STATE, "--state-dir"),
+) -> None:
+    """Check runtime dependencies, state storage, queue integrity, and ML extras."""
+    from audio_transcribe.doctor import checks_json, run_checks
+
+    try:
+        checks = run_checks(state_dir, backend)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    if json_mode:
+        typer.echo(json.dumps(checks_json(checks), ensure_ascii=False))
+    else:
+        for check in checks:
+            typer.echo(f"{'OK' if check.ok else 'FAIL':4} {check.name}: {check.detail}")
+    if any(not check.ok and check.name != "HF token" for check in checks):
+        raise typer.Exit(1)
+
+
+@app.command()
+def batch(
+    inputs: list[Path] = typer.Argument(..., help="Audio files to enqueue"),
+    output: Path = typer.Option(Path("."), "-o", "--output"),
+    profile: str = typer.Option("default", "--profile"),
+    queue: Path = typer.Option(_DEFAULT_QUEUE, "--queue"),
+) -> None:
+    """Idempotently enqueue several recordings."""
+    from audio_transcribe.worker import JobQueue
+
+    jobs = JobQueue(queue)
+    for path in inputs:
+        try:
+            job_id = jobs.enqueue(path, output, profile)
+        except (FileNotFoundError, ValueError) as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        typer.echo(f"queued {job_id}: {path}")
+
+
+@worker_app.command("enqueue")
+def worker_enqueue(
+    audio_file: Path = typer.Argument(...),
+    output: Path = typer.Option(Path("."), "-o", "--output"),
+    profile: str = typer.Option("default", "--profile"),
+    queue: Path = typer.Option(_DEFAULT_QUEUE, "--queue"),
+    max_attempts: int = typer.Option(3, "--max-attempts"),
+) -> None:
+    """Add one recording to the durable queue."""
+    from audio_transcribe.worker import JobQueue
+
+    try:
+        job_id = JobQueue(queue).enqueue(audio_file, output, profile, max_attempts)
+    except (FileNotFoundError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(str(job_id))
+
+
+@worker_app.command("status")
+def worker_status(
+    queue: Path = typer.Option(_DEFAULT_QUEUE, "--queue"),
+    json_mode: bool = typer.Option(False, "--json"),
+) -> None:
+    """Show queue health and recent jobs."""
+    from audio_transcribe.worker import JobQueue
+
+    jobs = JobQueue(queue)
+    if json_mode:
+        typer.echo(jobs.as_json())
+        return
+    health = jobs.health()
+    typer.echo(f"health: {'ok' if health['ok'] else 'degraded'}; jobs: {health['jobs']}")
+    for job in jobs.list(limit=20):
+        typer.echo(f"{job.id:4} {job.status:8} attempt {job.attempts}/{job.max_attempts} {job.input_path}")
+
+
+@worker_app.command("retry")
+def worker_retry(
+    job_id: int = typer.Argument(...),
+    queue: Path = typer.Option(_DEFAULT_QUEUE, "--queue"),
+) -> None:
+    """Move a failed or dead-letter job back to the queue."""
+    from audio_transcribe.worker import JobQueue
+
+    try:
+        JobQueue(queue).retry(job_id)
+    except KeyError as exc:
+        typer.echo(f"Error: job not found: {job_id}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"queued {job_id}")
+
+
+@worker_app.command("run")
+def worker_run(
+    queue: Path = typer.Option(_DEFAULT_QUEUE, "--queue"),
+    once: bool = typer.Option(False, "--once", help="Exit when no ready job remains"),
+    watch: Optional[Path] = typer.Option(None, "--watch", help="Scan a directory for stable audio files"),
+    output: Path = typer.Option(Path("."), "-o", "--output"),
+    profile: str = typer.Option("default", "--profile"),
+    stable_for: float = typer.Option(30.0, "--stable-for"),
+    poll: float = typer.Option(10.0, "--poll"),
+) -> None:
+    """Process queued recordings with retries and dead-letter handling."""
+    import time
+
+    from audio_transcribe.worker import JobQueue, stable_audio_files
+
+    jobs = JobQueue(queue)
+    jobs.recover_stale()
+    while True:
+        if watch:
+            for audio in stable_audio_files(watch, stable_for):
+                jobs.enqueue(audio, output, profile)
+        job = jobs.claim()
+        if job is None:
+            if once:
+                return
+            time.sleep(max(poll, 0.1))
+            continue
+        try:
+            # Reuse the CLI command so worker and interactive behavior stay identical.
+            process(
+                audio_file=Path(job.input_path),
+                output=Path(job.output_dir),
+                profile=job.profile,
+                language=None,
+                model=None,
+                backend=None,
+                min_speakers=None,
+                max_speakers=None,
+                align_model=None,
+                no_align=False,
+                no_diarize=False,
+                full=False,
+                transcript=None,
+                json_mode=True,
+                config_file=None,
+                template=None,
+                resume=True,
+                force=False,
+                restart_from=None,
+                keep_workdir=False,
+            )
+        except (Exception, SystemExit) as exc:
+            status = jobs.fail(job.id, str(exc))
+            typer.echo(f"job {job.id} {status}: {exc}", err=True)
+        else:
+            jobs.complete(job.id)
 
 
 @app.command()

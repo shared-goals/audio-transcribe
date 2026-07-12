@@ -8,9 +8,9 @@ import logging
 import sys
 import time
 import warnings
+from typing import Any
 
 import numpy as np
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +67,9 @@ def transcribe_mlx(audio_path: str, model_size: str, language: str) -> tuple[dic
 
     mlx_repo = MLX_MODEL_MAP.get(model_size)
     if mlx_repo is None:
-        print(
+        logger.warning(
             f"Warning: '{model_size}' not in MLX model map; using as HF repo directly. "
-            f"Requires MLX-converted weights. Known sizes: {list(MLX_MODEL_MAP.keys())}",
-            file=sys.stderr,
+            f"Requires MLX-converted weights. Known sizes: {list(MLX_MODEL_MAP.keys())}"
         )
         mlx_repo = model_size
 
@@ -117,10 +116,9 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
 
     mlx_repo = MLX_MODEL_MAP.get(model_size)
     if mlx_repo is None:
-        print(
+        logger.warning(
             f"Warning: '{model_size}' not in MLX model map; using as HF repo directly. "
-            f"Requires MLX-converted weights. Known sizes: {list(MLX_MODEL_MAP.keys())}",
-            file=sys.stderr,
+            f"Requires MLX-converted weights. Known sizes: {list(MLX_MODEL_MAP.keys())}"
         )
         mlx_repo = model_size
 
@@ -136,13 +134,8 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
         audio = audio.reshape(-1)
     if audio.size == 0:
         raise ValueError(f"Preprocessed audio has 0 samples (file may be corrupt): {audio_path}")
-    # pyannote expects (channels, time) with channels <= time; unsqueeze gives (1, n)
+    # pyannote expects (channels, time); the validated 1-D array becomes (1, n).
     waveform: Any = torch.from_numpy(audio).unsqueeze(0)
-    if waveform.ndim != 2 or waveform.shape[0] > waveform.shape[1]:
-        raise ValueError(
-            f"Invalid waveform shape after unsqueeze: {waveform.shape} "
-            f"(expected (channels, time) with channels <= time; audio samples: {audio.size})"
-        )
 
     # Run pyannote VAD to find speech regions
     vad_pipeline: Any = load_vad_model(device="cpu")

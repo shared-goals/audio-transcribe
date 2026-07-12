@@ -1,0 +1,30 @@
+name: Apple Silicon ML smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+jobs:
+  real-backends:
+    if: github.server_url == 'https://github.com'
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [mlx, mlx-vad]
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: astral-sh/setup-uv@v8.3.2
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra ml
+      - name: Run real ML backends
+        env:
+          AUDIO_TRANSCRIBE_SMOKE_AUDIO: ${{ secrets.AUDIO_TRANSCRIBE_SMOKE_AUDIO }}
+          AUDIO_TRANSCRIBE_SMOKE_BACKEND: ${{ matrix.backend }}
+        run: |
+          test -n "$AUDIO_TRANSCRIBE_SMOKE_AUDIO"
+          test -f "$AUDIO_TRANSCRIBE_SMOKE_AUDIO"
+          uv run --extra ml pytest -m ml_smoke -v

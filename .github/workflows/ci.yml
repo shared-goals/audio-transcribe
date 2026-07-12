@@ -13,8 +13,8 @@ jobs:
         os: [ubuntu-latest, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7.0.0
+      - uses: astral-sh/setup-uv@v8.3.2
         with:
           enable-cache: true
       - run: uv sync --locked
@@ -25,4 +25,3 @@ jobs:
       - run: uv run pytest --cov=audio_transcribe --cov-report=term --cov-fail-under=80
       - run: uv run pip-audit --path .venv/lib/python3.12/site-packages --skip-editable
       - run: uv build
-

@@ -1,5 +1,6 @@
 """Tests for pipeline orchestrator — stage sequencing and event emission."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -60,6 +61,45 @@ def test_pipeline_config_custom():
     assert cfg.language == "en"
     assert cfg.backend == "mlx"
     assert cfg.skip_align is True
+
+
+def test_pipeline_rejects_unknown_backend():
+    with pytest.raises(PipelineError, match="not a valid Backend"):
+        Pipeline(reporter=MagicMock()).run(PipelineConfig(audio_file="test.wav", backend="typo"))
+
+
+def test_pipeline_resumes_transcription_checkpoint(tmp_path):
+    audio = tmp_path / "input.wav"
+    audio.write_bytes(b"source")
+    reporter = MagicMock()
+
+    def fake_preprocess(_input, output):
+        assert output is not None
+        Path(output).write_bytes(b"normalized")
+        return output
+
+    transcript = {"segments": [], "text": "hello", "language": "ru"}
+    config = PipelineConfig(
+        audio_file=str(audio),
+        backend="mlx",
+        skip_align=True,
+        skip_diarize=True,
+        suppress_stdout_json=True,
+        resume=True,
+        state_dir=str(tmp_path / "state"),
+    )
+    with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
+        patch("audio_transcribe.pipeline.preprocess_stage", side_effect=fake_preprocess),
+        patch("audio_transcribe.pipeline.transcribe_stage", return_value=(transcript, object())) as transcribe,
+        patch("audio_transcribe.pipeline.load_audio_stage", return_value=object()),
+        patch("audio_transcribe.pipeline.build_output_stage", return_value=_STAGE_PATCHES["build_output_stage"]),
+        patch("audio_transcribe.pipeline.load_corrections", return_value=_STAGE_PATCHES["load_corrections"]),
+    ):
+        Pipeline(reporter).run(config)
+        Pipeline(reporter).run(config)
+
+    transcribe.assert_called_once()
 
 
 def test_pipeline_emits_events():

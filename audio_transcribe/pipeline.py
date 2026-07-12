@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from audio_transcribe.checkpoints import CheckpointStore
+from audio_transcribe.config import Backend
 from audio_transcribe.errors import PipelineError
 from audio_transcribe.models import Config, InputInfo, RunRecord, StageStats
 from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageError, StageStart
@@ -43,12 +45,19 @@ build_output_stage = build_output_stage
 
 def transcribe_stage(audio_path: str, model_size: str, language: str, backend: str) -> tuple[dict[str, Any], Any]:
     """Dispatch to the correct transcription backend."""
-    if backend == "mlx":
+    selected = Backend(backend)
+    if selected is Backend.MLX:
         return _transcribe_mlx(audio_path, model_size, language)
-    elif backend == "mlx-vad":
+    if selected is Backend.MLX_VAD:
         return _transcribe_mlx_vad(audio_path, model_size, language)
-    else:
-        return _transcribe_whisperx(audio_path, model_size, language)
+    return _transcribe_whisperx(audio_path, model_size, language)
+
+
+def load_audio_stage(audio_path: str) -> Any:
+    """Reload normalized audio when resuming after transcription."""
+    import whisperx
+
+    return whisperx.load_audio(audio_path)
 
 
 def align_stage(result: dict[str, Any], audio: Any, language: str, align_model: str | None = None) -> dict[str, Any]:
@@ -117,6 +126,11 @@ class PipelineConfig:
     transcript_output: str | None = None
     corrections_path: str | None = None
     suppress_stdout_json: bool = False  # Don't print JSON to stdout (when output handled externally)
+    resume: bool = False
+    force: bool = False
+    restart_from: str | None = None
+    keep_workdir: bool = False
+    state_dir: str | None = None
 
 
 class Pipeline:
@@ -135,10 +149,41 @@ class Pipeline:
         self._corrections_applied: int = 0
         self._audio_duration_s: float = 0.0
         self._backend: str = ""
+        self._checkpoints: CheckpointStore | None = None
 
     def run(self, config: PipelineConfig) -> dict[str, Any]:
         """Execute the full pipeline."""
         t0 = time.time()
+
+        try:
+            Backend(config.backend)
+        except ValueError as exc:
+            raise PipelineError(str(exc)) from exc
+        if config.min_speakers < 1 or config.max_speakers < config.min_speakers:
+            raise PipelineError("speaker range must satisfy 1 <= min_speakers <= max_speakers")
+
+        # A Pipeline instance may be reused; per-run state must not leak.
+        self._stage_stats = {}
+        self._corrections_applied = 0
+        self._checkpoints = None
+        if config.resume:
+            checkpoint_config = {
+                "language": config.language,
+                "model": config.model,
+                "backend": config.backend,
+                "min_speakers": config.min_speakers,
+                "max_speakers": config.max_speakers,
+                "align_model": config.align_model,
+                "skip_align": config.skip_align,
+                "skip_diarize": config.skip_diarize,
+            }
+            state_root = Path(config.state_dir or Path.home() / ".audio-transcribe") / "runs"
+            self._checkpoints = CheckpointStore(Path(config.audio_file), checkpoint_config, state_root, config.force)
+            if config.restart_from:
+                self._checkpoints.invalidate_from(
+                    config.restart_from,
+                    ["preprocess", "transcribe", "align", "diarize", "correct", "format"],
+                )
 
         from audio_transcribe.preflight import check as preflight_check
 
@@ -157,9 +202,18 @@ class Pipeline:
         )
 
         try:
-            return self._run_stages(config, t0)
+            result = self._run_stages(config, t0)
+            if self._checkpoints:
+                self._checkpoints.finish(config.output)
+            return result
+        except Exception as exc:
+            if self._checkpoints:
+                self._checkpoints.fail(str(exc))
+            raise
         except KeyboardInterrupt:
             # Ensure TUI Live display is stopped so terminal is restored
+            if self._checkpoints:
+                self._checkpoints.fail("interrupted")
             if hasattr(self.reporter, "_live") and self.reporter._live:
                 self.reporter._live.stop()
             raise
@@ -168,35 +222,57 @@ class Pipeline:
         """Execute all pipeline stages."""
 
         # Stage 1: Preprocess
-        clean_path = self._run_stage(
-            "preprocess",
-            lambda: preprocess_stage(config.audio_file),
-        )
+        cached_clean = self._load_checkpoint("preprocess")
+        if isinstance(cached_clean, str) and Path(cached_clean).exists():
+            clean_path = self._resume_stage("preprocess", cached_clean)
+        else:
+            workspace_output = str(self._checkpoints.root / "audio.16k.wav") if self._checkpoints else None
+            clean_path = self._run_stage(
+                "preprocess",
+                lambda: preprocess_stage(config.audio_file, workspace_output),
+            )
+            self._save_checkpoint("preprocess", clean_path)
 
         # Stage 2: Transcribe
-        result, audio = self._run_stage(
-            "transcribe",
-            lambda: transcribe_stage(clean_path, config.model, config.language, config.backend),
-        )
+        cached_transcribe = self._load_checkpoint("transcribe")
+        if isinstance(cached_transcribe, dict):
+            result = self._resume_stage("transcribe", cached_transcribe)
+            audio = load_audio_stage(clean_path)
+        else:
+            result, audio = self._run_stage(
+                "transcribe",
+                lambda: transcribe_stage(clean_path, config.model, config.language, config.backend),
+            )
+            self._save_checkpoint("transcribe", result)
 
         # Use auto-detected language if available
         effective_language: str = result.get("language") or config.language
 
         # Stage 3: Align (optional)
         if not config.skip_align:
-            result = self._run_stage(
-                "align",
-                lambda: align_stage(result, audio, effective_language, config.align_model),
-            )
+            cached_align = self._load_checkpoint("align")
+            if isinstance(cached_align, dict):
+                result = self._resume_stage("align", cached_align)
+            else:
+                result = self._run_stage(
+                    "align",
+                    lambda: align_stage(result, audio, effective_language, config.align_model),
+                )
+                self._save_checkpoint("align", result)
 
         # Stage 4: Diarize (optional)
         if not config.skip_diarize:
             hf_token = os.environ.get("HF_TOKEN", "")
             if hf_token:
-                result = self._run_stage(
-                    "diarize",
-                    lambda: diarize_stage(result, audio, hf_token, config.min_speakers, config.max_speakers),
-                )
+                cached_diarize = self._load_checkpoint("diarize")
+                if isinstance(cached_diarize, dict):
+                    result = self._resume_stage("diarize", cached_diarize)
+                else:
+                    result = self._run_stage(
+                        "diarize",
+                        lambda: diarize_stage(result, audio, hf_token, config.min_speakers, config.max_speakers),
+                    )
+                    self._save_checkpoint("diarize", result)
             else:
                 self.reporter.on_stage_start(StageStart(stage="diarize", eta_s=None))
                 self.reporter.on_stage_complete(
@@ -213,6 +289,7 @@ class Pipeline:
             )
             result["segments"] = segments
             self._corrections_applied = count
+            self._save_checkpoint("correct", {"segments": segments, "count": count})
 
         # Stage 6: Build output
         elapsed = time.time() - t0
@@ -220,6 +297,7 @@ class Pipeline:
             "format",
             lambda: build_output_stage(result, config.audio_file, effective_language, config.model, elapsed),
         )
+        self._save_checkpoint("format", output)
 
         # Write JSON output
         if config.output:
@@ -252,7 +330,25 @@ class Pipeline:
             print(json.dumps(output, ensure_ascii=False, indent=2))
 
         result_dict: dict[str, Any] = output
+        if self._checkpoints and not config.keep_workdir:
+            clean = Path(clean_path).resolve()
+            if clean.is_relative_to(self._checkpoints.root.resolve()):
+                clean.unlink(missing_ok=True)
         return result_dict
+
+    def _load_checkpoint(self, stage: str) -> Any | None:
+        return self._checkpoints.load(stage) if self._checkpoints else None
+
+    def _save_checkpoint(self, stage: str, value: Any) -> None:
+        if self._checkpoints:
+            elapsed = self._stage_stats.get(stage, StageStats(0.0, 0.0)).time_s
+            self._checkpoints.complete_stage(stage, value, elapsed)
+
+    def _resume_stage(self, stage: str, value: Any) -> Any:
+        self.reporter.on_stage_start(StageStart(stage=stage, eta_s=0.0))
+        self.reporter.on_stage_complete(StageComplete(stage=stage, time_s=0.0, extra={"resumed": True}))
+        self._stage_stats[stage] = StageStats(time_s=0.0, peak_rss_mb=round(_current_rss_mb(), 0))
+        return value
 
     def _estimate_eta(self, stage: str) -> float | None:
         """Estimate stage ETA from history, or None if insufficient data."""
@@ -337,6 +433,11 @@ def run_pipeline(
     reporter: Any = None,
     stats_store: Any = None,
     estimator_history: list[Any] | None = None,
+    resume: bool = False,
+    force: bool = False,
+    restart_from: str | None = None,
+    keep_workdir: bool = False,
+    state_dir: str | None = None,
 ) -> dict[str, Any]:
     """Run pipeline and return output dict. Output file handling is the caller's responsibility."""
     config = PipelineConfig(
@@ -351,6 +452,11 @@ def run_pipeline(
         skip_diarize=no_diarize,
         corrections_path=corrections_path,
         suppress_stdout_json=True,
+        resume=resume,
+        force=force,
+        restart_from=restart_from,
+        keep_workdir=keep_workdir,
+        state_dir=state_dir,
     )
     p = Pipeline(reporter=reporter, stats_store=stats_store, estimator_history=estimator_history)
     return p.run(config)

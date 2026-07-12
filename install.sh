@@ -3,7 +3,7 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/shared-goals/audio-transcribe/main/install.sh | zsh
 #
 # Environment variables:
-#   AUDIO_TRANSCRIBE_VERSION  Install a specific release (default: 0.4.0)
+#   AUDIO_TRANSCRIBE_VERSION  Install a specific release (default: 0.5.0)
 #   FORCE=1                   Force reinstall even if already installed
 #   QUIET=1                   Suppress informational messages
 #
@@ -71,7 +71,7 @@ fi
 
 # --- 4. Install audio-transcribe ---
 FORCE="${FORCE:-}"
-VERSION="${AUDIO_TRANSCRIBE_VERSION:-0.4.0}"
+VERSION="${AUDIO_TRANSCRIBE_VERSION:-0.5.0}"
 INSTALL_SPEC="audio-transcribe[ml] @ git+${REPO_URL}@v${VERSION}"
 
 _should_install=1

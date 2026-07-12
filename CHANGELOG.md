@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-13
+
+### Added
+- Resumable, content-addressed pipeline checkpoints with per-run JSON manifests, selective `--restart-from`, `--force`, and normalized-audio cleanup
+- Durable SQLite worker queue with atomic claims, crash recovery, exponential retry, dead-letter state, manual retry, stable-file watching, and machine-readable health
+- Named TOML configuration profiles and dependency-free meeting-note templates
+- `doctor`, `batch`, and `worker enqueue|run|status|retry` commands for unattended operation
+- Release automation for checksums, CycloneDX SBOMs, provenance attestations, and opt-in/scheduled Apple Silicon smoke tests
+- Current, exact GitHub Actions releases (`checkout` 7.0.0, `setup-uv` 8.3.2, build provenance 4.1.1)
+- LaunchAgent worker templates for replacing ad-hoc polling scripts
+- Separate `mlx`, `whisperx`, and `diarization` installation extras while retaining the aggregate `ml` extra
+
+### Changed
+- Make `mlx-vad` the consistent default across CLI, profiles, and documentation
+- Persist intermediate stage results only in the private state directory, not beside source recordings
+- Add advisory locking around concurrent statistics and speaker-database updates
+- Validate backend names and speaker ranges instead of silently falling back to WhisperX
+
+### Fixed
+- Prevent checkpoint collisions for byte-identical recordings stored at different paths
+- Validate NumPy audio buffers before constructing pyannote tensors
+- Preserve empty-preprocess rejection while bringing its test coverage into the release gate
+- Ensure public-mirror release tags target the sanitized commit and retain safe worker assets
+
 ## [0.4.0] - 2026-07-13
 
 ### Added

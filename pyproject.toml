@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "audio-transcribe"
-version = "0.4.0"
+version = "0.5.0"
 description = "Local audio transcription pipeline: WhisperX + Ollama"
 readme = "README.md"
 license = "MIT"
@@ -17,6 +17,27 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mlx = [
+    "mlx-whisper>=0.4.3,<0.5",
+    "numba>=0.66.0",
+    # mlx currently reuses WhisperX audio loading and alignment.
+    "torch>=2.8.0,<2.9",
+    "torchaudio>=2.8.0,<2.9",
+    "torchcodec>=0.7.0,<0.8",
+    "whisperx>=3.8.6,<3.9",
+]
+whisperx = [
+    "torch>=2.8.0,<2.9",
+    "torchaudio>=2.8.0,<2.9",
+    "torchcodec>=0.7.0,<0.8",
+    "whisperx>=3.8.6,<3.9",
+]
+diarization = [
+    "torch>=2.8.0,<2.9",
+    "torchaudio>=2.8.0,<2.9",
+    "torchcodec>=0.7.0,<0.8",
+    "whisperx>=3.8.6,<3.9",
+]
 ml = [
     "mlx-whisper>=0.4.3,<0.5",
     "numba>=0.66.0",
@@ -93,6 +114,9 @@ packages = ["audio_transcribe"]
 [tool.hatch.build.targets.sdist]
 include = [
     "/audio_transcribe",
+    "/examples",
+    "/scripts/audio-transcribe-worker.sh",
+    "/scripts/com.gnezim.audio-transcribe-worker.plist.template",
     "/CHANGELOG.md",
     "/LICENSE",
     "/README.md",
