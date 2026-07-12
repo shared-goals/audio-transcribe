@@ -37,9 +37,7 @@ def recommend(duration_s: float, history: list[RunRecord]) -> Recommendation:
         return Recommendation(backend=None, tips=["No backend data available."])
 
     # Find best backend (lowest average realtime_ratio = fastest)
-    backend_avg: dict[str, float] = {
-        backend: sum(ratios) / len(ratios) for backend, ratios in backend_ratios.items()
-    }
+    backend_avg: dict[str, float] = {backend: sum(ratios) / len(ratios) for backend, ratios in backend_ratios.items()}
 
     best_backend = min(backend_avg, key=lambda b: backend_avg[b])
     tips: list[str] = []

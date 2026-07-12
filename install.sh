@@ -3,7 +3,7 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/shared-goals/audio-transcribe/main/install.sh | zsh
 #
 # Environment variables:
-#   AUDIO_TRANSCRIBE_VERSION  Pin a specific version (e.g. 0.2.1)
+#   AUDIO_TRANSCRIBE_VERSION  Install a specific release (default: 0.4.0)
 #   FORCE=1                   Force reinstall even if already installed
 #   QUIET=1                   Suppress informational messages
 #
@@ -71,13 +71,8 @@ fi
 
 # --- 4. Install audio-transcribe ---
 FORCE="${FORCE:-}"
-VERSION="${AUDIO_TRANSCRIBE_VERSION:-}"
-
-if [[ -n "$VERSION" ]]; then
-    INSTALL_SPEC="git+${REPO_URL}@v${VERSION}"
-else
-    INSTALL_SPEC="git+${REPO_URL}"
-fi
+VERSION="${AUDIO_TRANSCRIBE_VERSION:-0.4.0}"
+INSTALL_SPEC="audio-transcribe[ml] @ git+${REPO_URL}@v${VERSION}"
 
 _should_install=1
 if [[ -z "$FORCE" ]] && command -v audio-transcribe &>/dev/null; then
@@ -85,8 +80,6 @@ if [[ -z "$FORCE" ]] && command -v audio-transcribe &>/dev/null; then
     if [[ -n "$VERSION" && "$_installed" == *"$VERSION"* ]]; then
         ok "audio-transcribe $VERSION already installed"
         _should_install=0
-    elif [[ -z "$VERSION" && -n "$_installed" ]]; then
-        info "audio-transcribe $_installed found; reinstalling from HEAD..."
     fi
 fi
 

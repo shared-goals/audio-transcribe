@@ -220,9 +220,11 @@ def test_format_transcript_duration_from_segments():
 
 def test_format_transcript_roundtrip_json(tmp_path):
     """Verify format_transcript works with JSON loaded from a file."""
-    data = _make_data([
-        {"start": 0.0, "end": 1.0, "text": "hello", "speaker": "SPEAKER_00"},
-    ])
+    data = _make_data(
+        [
+            {"start": 0.0, "end": 1.0, "text": "hello", "speaker": "SPEAKER_00"},
+        ]
+    )
     json_path = tmp_path / "test.json"
     json_path.write_text(json.dumps(data), encoding="utf-8")
     loaded = json.loads(json_path.read_text(encoding="utf-8"))
@@ -331,6 +333,7 @@ def test_format_date_fallback_to_today():
         "segments": [{"start": 0.0, "end": 1.0, "text": "Hi"}],
     }
     from datetime import date
+
     result = format_meeting_note(data, audio_data_path=".audio-data/test.json")
     doc = parse_meeting(result)
     assert doc.frontmatter["date"] == str(date.today())

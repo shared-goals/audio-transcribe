@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-13
+
+### Added
+- Cross-platform CI for lockfile validation, Ruff formatting and linting, strict mypy, tests with coverage, dependency auditing, and package builds
+- Dependabot groups for development tools, ML dependencies, and GitHub Actions
+- Security policy documenting the upstream PyTorch compatibility exception and trusted-input requirements
+- Opt-in real-audio Apple Silicon smoke test for ML backend upgrades
+- `--version` CLI option
+- Clear pre-flight diagnostics when the optional ML dependencies are not installed
+
+### Changed
+- Refresh and constrain the compatible dependency stack, including WhisperX 3.8.6 and current CLI/development tooling
+- Move heavyweight transcription libraries into the optional `ml` extra; the installer continues to install the complete stack
+- Standardize formatting on Ruff and remove Black
+- Install and update only stable tagged releases; remove silent background self-upgrades from normal CLI commands
+- Restrict wheel and source-distribution contents and add complete package metadata
+- Move `PipelineError` into a shared errors module to remove loader-to-orchestrator coupling
+- Use atomic writes for generated JSON, meeting notes, and transcripts
+- Log best-effort statistics persistence failures at debug level
+- Narrow missing-import suppression to untyped ML libraries
+
+### Fixed
+- Keep `uv.lock` synchronized with the released package version
+- Quote wiki-link values in YAML frontmatter so generated meeting notes remain parseable
+- Use the current MLX cache-release API instead of the deprecated Metal-specific method
+
 ## [0.3.0] - 2026-03-05
 
 ### Added

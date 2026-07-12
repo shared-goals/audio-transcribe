@@ -15,6 +15,12 @@ def test_cli_help():
     assert "process" in result.output
 
 
+def test_cli_version() -> None:
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == "0.4.0"
+
+
 def test_process_help():
     result = runner.invoke(app, ["process", "--help"])
     assert result.exit_code == 0

@@ -21,6 +21,8 @@ curl -fsSL https://raw.githubusercontent.com/shared-goals/audio-transcribe/main/
 
 The installer handles Homebrew, ffmpeg, uv, the Python package, PATH setup, and HuggingFace token configuration.
 
+The installer uses the latest supported tagged release (`0.4.0`) and installs the optional ML stack. For a lightweight CLI-only development environment, use `uv sync`; for transcription backends, use `uv sync --extra ml`.
+
 ### Requirements
 
 - macOS (Apple Silicon)
@@ -121,7 +123,7 @@ audio-transcribe process recording.m4a --json
 
 ## Updates
 
-The tool checks for updates automatically once per day (silently, on first run). To force an immediate update:
+Updates are explicit and always select the latest stable release tag. The CLI never mutates its own environment during an unrelated command:
 
 ```zsh
 audio-transcribe self-update
@@ -135,9 +137,17 @@ Each run produces a Markdown meeting note with YAML frontmatter (speakers, audio
 
 ```zsh
 uv sync
+uv sync --extra ml        # required for real transcription
 uv run ruff check .
+uv run ruff format --check .
 uv run mypy .
 uv run pytest
+```
+
+Run the real Apple Silicon smoke test after changing the ML stack:
+
+```zsh
+AUDIO_TRANSCRIBE_SMOKE_AUDIO=/path/to/short-trusted.wav uv run --extra ml pytest -m ml_smoke
 ```
 
 ## License

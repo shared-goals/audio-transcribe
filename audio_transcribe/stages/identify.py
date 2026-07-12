@@ -17,8 +17,8 @@ from audio_transcribe.stages.loader import load_audio_data
 class IdentifyResult:
     """Result of speaker identification."""
 
-    matched: dict[str, str] = field(default_factory=dict)   # speaker_id -> person_name
-    unmatched: list[str] = field(default_factory=list)       # speaker_ids with no match
+    matched: dict[str, str] = field(default_factory=dict)  # speaker_id -> person_name
+    unmatched: list[str] = field(default_factory=list)  # speaker_ids with no match
 
 
 def identify_speakers(
@@ -34,8 +34,10 @@ def identify_speakers(
 
     # Load stored JSON
     stored = load_audio_data(meeting_path, doc)
-    audio_file = audio_file_override if audio_file_override is not None else str(
-        doc.frontmatter.get("audio_file", stored.get("audio_file", ""))
+    audio_file = (
+        audio_file_override
+        if audio_file_override is not None
+        else str(doc.frontmatter.get("audio_file", stored.get("audio_file", "")))
     )
     segments: list[dict[str, Any]] = stored.get("segments", [])
 

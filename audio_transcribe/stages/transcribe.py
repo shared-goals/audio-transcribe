@@ -50,7 +50,7 @@ def _clear_mlx_cache() -> None:
     ModelHolder.model = None
     ModelHolder.model_path = None
     gc.collect()
-    mx.metal.clear_cache()
+    mx.clear_cache()
 
 
 def transcribe_mlx(audio_path: str, model_size: str, language: str) -> tuple[dict[str, Any], Any]:
@@ -172,9 +172,7 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
     return result, audio
 
 
-def build_output(
-    result: dict[str, Any], audio_file: str, language: str, model: str, elapsed: float
-) -> dict[str, Any]:
+def build_output(result: dict[str, Any], audio_file: str, language: str, model: str, elapsed: float) -> dict[str, Any]:
     """Build the final JSON output from pipeline result."""
     segments = []
     for seg in result.get("segments", []):

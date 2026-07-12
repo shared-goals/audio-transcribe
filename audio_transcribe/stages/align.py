@@ -10,9 +10,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def align(
-    result: dict[str, Any], audio: Any, language: str, align_model: str | None = None
-) -> dict[str, Any]:
+def align(result: dict[str, Any], audio: Any, language: str, align_model: str | None = None) -> dict[str, Any]:
     """Align transcription segments with word-level timestamps using WhisperX."""
     import whisperx
 

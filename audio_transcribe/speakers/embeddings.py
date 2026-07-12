@@ -54,9 +54,7 @@ def _load_audio_ffmpeg(audio_path: str, sample_rate: int = 16000) -> dict[str, A
     return {"waveform": waveform, "sample_rate": sample_rate}
 
 
-def extract_embedding(
-    audio: str | dict[str, Any], start: float, end: float
-) -> NDArray[np.float32]:
+def extract_embedding(audio: str | dict[str, Any], start: float, end: float) -> NDArray[np.float32]:
     """Extract speaker embedding from an audio segment using pyannote wespeaker model.
 
     audio: path string (decoded via ffmpeg) or preloaded {'waveform': tensor, 'sample_rate': int}.

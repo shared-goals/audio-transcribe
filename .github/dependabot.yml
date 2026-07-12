@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      development-tools:
+        dependency-type: development
+      ml-stack:
+        patterns:
+          - mlx-whisper
+          - pyannote-*
+          - torch*
+          - transformers
+          - whisperx
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+

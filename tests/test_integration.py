@@ -8,6 +8,7 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from audio_transcribe.cli import app
+from audio_transcribe.preflight import PreflightResult
 
 runner = CliRunner()
 
@@ -39,6 +40,7 @@ def test_process_json_mode_with_mock(tmp_path, monkeypatch):
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=str(audio)),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_MOCK_TRANSCRIBE_RV),
         patch("audio_transcribe.pipeline.align_stage", return_value=_MOCK_ALIGN_RV),
+        patch("audio_transcribe.preflight.check", return_value=PreflightResult()),
         patch("audio_transcribe.pipeline.load_corrections", return_value=_MOCK_CORRECTIONS),
         patch("audio_transcribe.pipeline.build_output_stage", return_value=_MOCK_OUTPUT),
     ):
@@ -76,6 +78,7 @@ def test_process_with_transcript_output(tmp_path, monkeypatch):
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=str(audio)),
         patch("audio_transcribe.pipeline.transcribe_stage", return_value=_MOCK_TRANSCRIBE_RV),
         patch("audio_transcribe.pipeline.align_stage", return_value=_MOCK_ALIGN_RV),
+        patch("audio_transcribe.preflight.check", return_value=PreflightResult()),
         patch("audio_transcribe.pipeline.load_corrections", return_value=_MOCK_CORRECTIONS),
         patch("audio_transcribe.pipeline.build_output_stage", return_value=_MOCK_OUTPUT),
     ):

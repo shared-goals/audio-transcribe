@@ -32,9 +32,7 @@ def run_diarization(
     hf_token = os.environ.get("HF_TOKEN", "")
     audio = whisperx.load_audio(audio_file)
     result: dict[str, Any] = {"segments": segments}
-    diarize_model = DiarizationPipeline(
-        model_name="pyannote/speaker-diarization-3.1", token=hf_token, device="cpu"
-    )
+    diarize_model = DiarizationPipeline(model_name="pyannote/speaker-diarization-3.1", token=hf_token, device="cpu")
     diarize_segs = diarize_model(audio, min_speakers=min_speakers, max_speakers=max_speakers)
     result = whisperx.assign_word_speakers(diarize_segs, result)
     return list(result.get("segments", []))
@@ -82,8 +80,10 @@ def diarize_and_update(
     stored = load_audio_data(meeting_path, doc)
     json_path = meeting_path.parent / str(doc.frontmatter.get("audio_data", ""))
 
-    audio_file: str = audio_file_override if audio_file_override is not None else str(
-        doc.frontmatter.get("audio_file", stored.get("audio_file", ""))
+    audio_file: str = (
+        audio_file_override
+        if audio_file_override is not None
+        else str(doc.frontmatter.get("audio_file", stored.get("audio_file", "")))
     )
     segments: list[dict[str, Any]] = stored.get("segments", [])
 
