@@ -41,8 +41,9 @@ def _force_quote_wiki_links(fm: dict[str, object]) -> dict[str, object]:
     speakers = result.get("speakers")
     if isinstance(speakers, dict):
         result["speakers"] = {
-            _QuotedStr(k) if isinstance(k, str) and "[[" in k else k:
-            _QuotedStr(v) if isinstance(v, str) and "[[" in v else v
+            _QuotedStr(k) if isinstance(k, str) and "[[" in k else k: _QuotedStr(v)
+            if isinstance(v, str) and "[[" in v
+            else v
             for k, v in speakers.items()
         }
     return result
@@ -102,7 +103,7 @@ def parse_meeting(text: str) -> MeetingDoc:
     if fm_match:
         doc._raw_frontmatter = fm_match.group(1)
         doc.frontmatter = yaml.safe_load(doc._raw_frontmatter) or {}
-        body = text[fm_match.end():]
+        body = text[fm_match.end() :]
 
     # Parse sections
     section_matches = list(_SECTION_RE.finditer(body))

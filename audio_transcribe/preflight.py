@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 from dataclasses import dataclass, field
+from importlib.util import find_spec
 from pathlib import Path
 
 
@@ -28,6 +29,16 @@ def check(
 ) -> PreflightResult:
     """Validate prerequisites before running the pipeline."""
     result = PreflightResult()
+
+    required_modules = ["whisperx"]
+    if backend in {"mlx", "mlx-vad"}:
+        required_modules.append("mlx_whisper")
+    missing = [module for module in required_modules if find_spec(module) is None]
+    if missing:
+        result.errors.append(
+            "ML backend dependencies are not installed "
+            f"({', '.join(missing)}) — install with: pip install 'audio-transcribe[ml]'"
+        )
 
     if not shutil.which("ffmpeg"):
         result.errors.append("ffmpeg not found in PATH — install with: brew install ffmpeg")

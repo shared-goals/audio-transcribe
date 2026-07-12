@@ -4,7 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from audio_transcribe.pipeline import Pipeline, PipelineConfig, PipelineError
+from audio_transcribe.errors import PipelineError
+from audio_transcribe.pipeline import Pipeline, PipelineConfig
 from audio_transcribe.preflight import PreflightResult
 from audio_transcribe.progress.events import StageStart
 from audio_transcribe.stats.store import StatsStore

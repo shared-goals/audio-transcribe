@@ -158,5 +158,6 @@ def test_parse_speaker_legend():
     """)
     doc = parse_meeting(md)
     from audio_transcribe.markdown.parser import parse_speaker_legend
+
     legend = parse_speaker_legend(doc)
     assert legend == {"SPEAKER_00": "Speaker A", "SPEAKER_01": "[[Andrey]]"}

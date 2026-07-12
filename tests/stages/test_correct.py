@@ -99,7 +99,6 @@ def test_learn_corrections_no_diff():
 
 
 def test_load_corrections_language_scoped(tmp_path):
-
     """Language-scoped corrections should load only the matching language."""
     corrections_file = tmp_path / "corrections.yaml"
     corrections_file.write_text(
@@ -112,7 +111,6 @@ def test_load_corrections_language_scoped(tmp_path):
 
 
 def test_load_corrections_legacy_flat_format(tmp_path):
-
     """Legacy flat format (no language keys) should still work."""
     corrections_file = tmp_path / "corrections.yaml"
     corrections_file.write_text("substitutions:\n  кубернетес: Kubernetes\n")

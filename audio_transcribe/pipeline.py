@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from audio_transcribe.errors import PipelineError
 from audio_transcribe.models import Config, InputInfo, RunRecord, StageStats
 from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageError, StageStart
 from audio_transcribe.stages.correct import apply_corrections, load_corrections
@@ -30,6 +31,7 @@ from audio_transcribe.stages.transcribe import (
 from audio_transcribe.stages.transcribe import (
     transcribe_mlx_vad as _transcribe_mlx_vad,
 )
+from audio_transcribe.util import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +41,7 @@ format_stage = format_transcript
 build_output_stage = build_output_stage
 
 
-def transcribe_stage(
-    audio_path: str, model_size: str, language: str, backend: str
-) -> tuple[dict[str, Any], Any]:
+def transcribe_stage(audio_path: str, model_size: str, language: str, backend: str) -> tuple[dict[str, Any], Any]:
     """Dispatch to the correct transcription backend."""
     if backend == "mlx":
         return _transcribe_mlx(audio_path, model_size, language)
@@ -51,9 +51,7 @@ def transcribe_stage(
         return _transcribe_whisperx(audio_path, model_size, language)
 
 
-def align_stage(
-    result: dict[str, Any], audio: Any, language: str, align_model: str | None = None
-) -> dict[str, Any]:
+def align_stage(result: dict[str, Any], audio: Any, language: str, align_model: str | None = None) -> dict[str, Any]:
     """Run alignment stage."""
     from audio_transcribe.stages.align import align
 
@@ -82,24 +80,24 @@ def _probe_duration(audio_file: str) -> float:
     try:
         result = subprocess.run(
             [
-                "ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1", audio_file,
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                audio_file,
             ],
-            capture_output=True, text=True, timeout=10, check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
         )
         return float(result.stdout.strip())
     except (ValueError, FileNotFoundError, subprocess.TimeoutExpired):
         logger.debug("Could not probe audio duration for %s", audio_file)
         return 0.0
-
-
-class PipelineError(Exception):
-    """Pipeline failure with stage context."""
-
-    def __init__(self, message: str, stage: str | None = None, elapsed_s: float = 0.0) -> None:
-        self.stage = stage
-        self.elapsed_s = elapsed_s
-        super().__init__(message)
 
 
 @dataclass
@@ -206,9 +204,7 @@ class Pipeline:
                 )
 
         # Stage 5: Corrections (optional)
-        corrections_path = config.corrections_path or str(
-            Path.home() / ".audio-transcribe" / "corrections.yaml"
-        )
+        corrections_path = config.corrections_path or str(Path.home() / ".audio-transcribe" / "corrections.yaml")
         corrections = load_corrections(corrections_path, effective_language)
         if corrections["substitutions"] or corrections["patterns"]:
             segments, count = self._run_stage(
@@ -228,7 +224,7 @@ class Pipeline:
         # Write JSON output
         if config.output:
             json_str = json.dumps(output, ensure_ascii=False, indent=2)
-            Path(config.output).write_text(json_str, encoding="utf-8")
+            atomic_write_text(Path(config.output), json_str)
 
         # Stage 7: Format transcript (optional)
         transcript_md: str | None = None
@@ -237,7 +233,7 @@ class Pipeline:
                 "transcript",
                 lambda: format_stage(output),
             )
-            Path(config.transcript_output).write_text(transcript_md, encoding="utf-8")
+            atomic_write_text(Path(config.transcript_output), transcript_md)
 
         # Emit pipeline complete
         self.reporter.on_pipeline_complete(
@@ -276,9 +272,7 @@ class Pipeline:
         except Exception as e:
             elapsed = time.time() - t
             if hasattr(self.reporter, "on_stage_error"):
-                self.reporter.on_stage_error(
-                    StageError(stage=name, error=str(e), time_s=round(elapsed, 1))
-                )
+                self.reporter.on_stage_error(StageError(stage=name, error=str(e), time_s=round(elapsed, 1)))
             raise PipelineError(f"{name} failed: {e}", stage=name, elapsed_s=elapsed) from e
         elapsed = time.time() - t
         self.reporter.on_stage_complete(
@@ -306,9 +300,7 @@ class Pipeline:
                     file=config.audio_file,
                     duration_s=duration_s,
                     file_size_mb=(
-                        Path(config.audio_file).stat().st_size / 1_048_576
-                        if Path(config.audio_file).exists()
-                        else 0.0
+                        Path(config.audio_file).stat().st_size / 1_048_576 if Path(config.audio_file).exists() else 0.0
                     ),
                 ),
                 config=Config(
@@ -328,7 +320,7 @@ class Pipeline:
             assert self.stats_store is not None  # caller checks before calling
             self.stats_store.append(record)
         except Exception:
-            pass  # Stats are best-effort — never crash the pipeline
+            logger.debug("Could not persist pipeline statistics", exc_info=True)
 
 
 def run_pipeline(

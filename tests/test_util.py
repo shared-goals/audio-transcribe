@@ -1,4 +1,5 @@
 """Tests for atomic file write utilities."""
+
 from pathlib import Path
 
 import numpy as np

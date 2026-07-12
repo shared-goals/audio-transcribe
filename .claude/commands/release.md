@@ -31,9 +31,12 @@ Wait for user confirmation or override before proceeding.
 
 ### 4. Apply version bump
 
-Update the version string in both files:
+Update the version string in all release-owned locations:
 - `pyproject.toml`: the `version = "X.Y.Z"` line
 - `audio_transcribe/__init__.py`: the `__version__ = "X.Y.Z"` line
+- `install.sh`: the default value in `AUDIO_TRANSCRIBE_VERSION`
+
+Then run `uv lock` so the editable package entry in `uv.lock` carries the same version.
 
 ### 5. Stamp the changelog
 
@@ -43,8 +46,19 @@ In `CHANGELOG.md`:
 
 ### 6. Commit and tag
 
+Run the release quality gate first:
+
 ```bash
-git add pyproject.toml audio_transcribe/__init__.py CHANGELOG.md
+uv lock --check
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy .
+uv run pytest --cov=audio_transcribe --cov-fail-under=80
+uv build
+```
+
+```bash
+git add pyproject.toml audio_transcribe/__init__.py install.sh CHANGELOG.md uv.lock
 git commit -m "release: vX.Y.Z"
 git tag vX.Y.Z
 ```

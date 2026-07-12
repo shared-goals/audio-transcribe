@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from audio_transcribe.errors import PipelineError
 from audio_transcribe.markdown.parser import MeetingDoc
-from audio_transcribe.pipeline import PipelineError
 
 
 def load_audio_data(meeting_path: Path, doc: MeetingDoc) -> dict[str, Any]:

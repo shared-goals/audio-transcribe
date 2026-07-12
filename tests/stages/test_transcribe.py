@@ -415,7 +415,7 @@ def test_transcribe_mlx_vad_clears_mlx_cache(tmp_path):
         assert mock_model_holder.model is None
         assert mock_model_holder.model_path is None
         mock_mx.metal.set_cache_limit.assert_called_once_with(100_000_000)
-        mock_mx.metal.clear_cache.assert_called_once()
+        mock_mx.clear_cache.assert_called_once()
 
 
 def test_transcribe_mlx_clears_mlx_cache(tmp_path):
@@ -444,4 +444,4 @@ def test_transcribe_mlx_clears_mlx_cache(tmp_path):
 
         assert mock_model_holder.model is None
         assert mock_model_holder.model_path is None
-        mock_mx.metal.clear_cache.assert_called_once()
+        mock_mx.clear_cache.assert_called_once()

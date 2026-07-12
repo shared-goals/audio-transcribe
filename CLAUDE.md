@@ -16,7 +16,7 @@ Audio (WAV/M4A/MP3)
 ## Setup
 
 ```bash
-uv sync                          # install dependencies
+uv sync --extra ml               # install development and transcription dependencies
 export HF_TOKEN=hf_...           # required for diarization (pyannote)
 ```
 
@@ -31,20 +31,20 @@ For LLM summarization: `brew install ollama && ollama pull gemma3:27b`
 Follows the same conventions as `bft/svod-excel-generator`:
 
 - **Python**: `>=3.12` (bump `requires-python` when adding new scripts)
-- **Formatter**: `black` — line length 120
+- **Formatter**: `ruff format` — line length 120
 - **Linter**: `ruff` — rules `E, F, I, N, W, B, ANN`; line length 120
 - **Type checker**: `mypy` — strict mode (`disallow_untyped_defs`, `warn_return_any`)
 - **Tests**: `pytest` + `pytest-cov`
 
 ```bash
 uv run ruff check .
-uv run ruff format .        # or: uv run black .
+uv run ruff format .
 uv run mypy .
 uv run pytest
 uv run pytest tests/path/to/test_file.py::test_name   # single test
 ```
 
-Add dev dependencies to `pyproject.toml` under `[dependency-groups] dev` when setting up linting/testing.
+Add dev dependencies to `pyproject.toml` under `[dependency-groups] dev` when setting up linting/testing. Keep heavy transcription dependencies in the `ml` optional extra so core CLI and CI environments remain lightweight.
 
 ## Running the Pipeline
 
@@ -131,11 +131,11 @@ Do not wrap or break lines in markdown files. Write each paragraph or list item 
 
 ## Release & Changelog
 
-This project uses [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/). Version is tracked in two places: `pyproject.toml` and `audio_transcribe/__init__.py`.
+This project uses [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/). Version is tracked in `pyproject.toml`, `audio_transcribe/__init__.py`, the installer default, and the generated `uv.lock`.
 
-**Per-commit rule**: When committing a `fix:`, `feat:`, or breaking change, also add a line to the `[Unreleased]` section of `CHANGELOG.md` under the appropriate heading (`### Added`, `### Fixed`, `### Changed`, `### Removed`). This keeps the changelog current while context is fresh.
+**Per-commit rule**: When committing a `fix:`, `feat:`, or breaking change, also add a line to the `[Unreleased]` section of `CHANGELOG.md` under the appropriate heading (`### Added`, `### Fixed`, `### Changed`, `### Removed`). This keeps the changelog current while context is fresh. A release must also refresh `uv.lock` and pass `uv lock --check`.
 
-**Releasing**: Use `/release` to bump version, stamp changelog, commit, tag, and optionally push. The skill auto-detects the bump level from commit prefixes (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE` → major) and lets you override.
+**Releasing**: Use `/release` to bump version, stamp changelog, refresh the lockfile, commit, tag, and optionally push. The skill auto-detects the bump level from commit prefixes (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE` → major) and lets you override.
 
 ## Git Conventions
 

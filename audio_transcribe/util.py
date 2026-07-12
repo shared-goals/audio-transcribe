@@ -1,4 +1,5 @@
 """File I/O utilities — atomic writes to prevent data corruption."""
+
 from __future__ import annotations
 
 import os

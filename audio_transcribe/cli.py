@@ -28,6 +28,15 @@ _DEFAULT_CORRECTIONS = Path.home() / ".audio-transcribe" / "corrections.yaml"
 _HF_TOKEN_CACHE = Path.home() / ".cache" / "huggingface" / "token"
 
 
+def _version_callback(value: bool) -> None:
+    """Print the package version and exit before command initialization."""
+    if value:
+        from audio_transcribe import __version__
+
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
 def _sync_hf_token() -> None:
     """Sync HF_TOKEN between environment and ~/.cache/huggingface/token.
 
@@ -47,14 +56,21 @@ def _sync_hf_token() -> None:
 
 
 @app.callback()
-def main(verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging")) -> None:
+def main(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit.",
+    ),
+) -> None:
     """Local audio transcription pipeline."""
     from audio_transcribe.log import configure
-    from audio_transcribe.update import check_for_update
 
     configure(verbose=verbose)
     _sync_hf_token()
-    check_for_update()
 
 
 @app.command()
@@ -87,6 +103,7 @@ def process(
     from audio_transcribe.progress.tui import TuiReporter
     from audio_transcribe.stages.format import format_meeting_note, format_transcript
     from audio_transcribe.stats.store import StatsStore
+    from audio_transcribe.util import atomic_write_text
 
     store = StatsStore(_DEFAULT_HISTORY)
     reporter = JsonReporter() if json_mode or not sys.stdout.isatty() else TuiReporter()
@@ -118,17 +135,17 @@ def process(
     audio_data_dir = output_dir / ".audio-data"
     audio_data_dir.mkdir(parents=True, exist_ok=True)
     json_path = audio_data_dir / f"{stem}.json"
-    json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(json_path, json.dumps(result, ensure_ascii=False, indent=2))
 
     # Format and write meeting note
     relative_json = f".audio-data/{stem}.json"
     markdown = format_meeting_note(result, audio_data_path=relative_json)
     md_path = output_dir / f"{stem}.md"
-    md_path.write_text(markdown, encoding="utf-8")
+    atomic_write_text(md_path, markdown)
 
     # Optional legacy transcript
     if transcript:
-        transcript.write_text(format_transcript(result), encoding="utf-8")
+        atomic_write_text(transcript, format_transcript(result))
 
     if not json_mode and sys.stdout.isatty():
         typer.echo(f"Meeting note: {md_path}", err=True)
@@ -222,9 +239,19 @@ def recommend(
     duration_s = 0.0
     try:
         result = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-             "-of", "default=noprint_wrappers=1:nokey=1", str(audio_file)],
-            capture_output=True, text=True, check=False,
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(audio_file),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         duration_s = float(result.stdout.strip())
     except (ValueError, FileNotFoundError):

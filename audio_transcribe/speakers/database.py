@@ -103,7 +103,9 @@ class SpeakerDB:
             if stored.shape != (_EMBEDDING_DIM,):
                 logger.warning(
                     "Skipping speaker %s: embedding shape %s, expected (%d,)",
-                    key, stored.shape, _EMBEDDING_DIM,
+                    key,
+                    stored.shape,
+                    _EMBEDDING_DIM,
                 )
                 continue
             dist = cosine_distance(query, stored)

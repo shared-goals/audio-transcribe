@@ -82,9 +82,7 @@ class TuiReporter:
         for s in self._stages_done:
             rss = f"  [dim]{s['peak_rss_mb']:.0f} MB[/]" if s.get("peak_rss_mb") else ""
             lines.append(
-                Text.from_markup(
-                    f"[green]✓[/] [cyan]{s['stage']:<12}[/] [bold]{_format_time(s['time_s'])}[/]{rss}"
-                )
+                Text.from_markup(f"[green]✓[/] [cyan]{s['stage']:<12}[/] [bold]{_format_time(s['time_s'])}[/]{rss}")
             )
 
         # Current stage — persistent spinner + live elapsed
@@ -143,9 +141,7 @@ class TuiReporter:
 
     def on_stage_error(self, event: StageError) -> None:
         """Mark stage as failed and update display."""
-        self._stages_done.append(
-            {"stage": event.stage, "time_s": event.time_s, "peak_rss_mb": 0, "error": event.error}
-        )
+        self._stages_done.append({"stage": event.stage, "time_s": event.time_s, "peak_rss_mb": 0, "error": event.error})
         self._current_stage = None
 
     def on_pipeline_complete(self, event: PipelineComplete) -> None:

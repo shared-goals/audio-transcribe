@@ -35,9 +35,7 @@ def load_corrections(path: str, language: str = "ru") -> dict[str, Any]:
     }
 
 
-def apply_corrections(
-    segments: list[dict[str, Any]], corrections: dict[str, Any]
-) -> tuple[list[dict[str, Any]], int]:
+def apply_corrections(segments: list[dict[str, Any]], corrections: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
     """Apply substitutions and regex patterns to segment text and words.
 
     Returns (modified_segments, replacement_count).

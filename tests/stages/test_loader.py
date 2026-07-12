@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from audio_transcribe.errors import PipelineError
 from audio_transcribe.markdown.parser import parse_meeting
-from audio_transcribe.pipeline import PipelineError
 from audio_transcribe.stages.loader import load_audio_data
 
 
