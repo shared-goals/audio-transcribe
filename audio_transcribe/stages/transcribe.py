@@ -5,14 +5,21 @@ All backends return (result_dict, audio_array) for downstream align/diarize stag
 
 import gc
 import logging
+import sys
 import time
+import warnings
+
+import numpy as np
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 logging.getLogger("whisperx").setLevel(logging.WARNING)
 logging.getLogger("lightning.pytorch.utilities.migration.utils").setLevel(logging.WARNING)
-logging.getLogger("lightning").setLevel(logging.WARNING)
+
+# Suppress third-party noise that doesn't affect pipeline functionality
+warnings.filterwarnings("ignore", message="torchcodec is not installed correctly", category=UserWarning)
+warnings.filterwarnings("ignore", message="Lightning automatically upgraded", category=UserWarning)
 
 # Maps whisper model size names to mlx-community HuggingFace repos (Apple Silicon MLX backend)
 MLX_MODEL_MAP: dict[str, str] = {
@@ -30,12 +37,12 @@ def transcribe(audio_path: str, model_size: str, language: str) -> tuple[dict[st
     """Transcribe using WhisperX (CTranslate2/CPU backend)."""
     import whisperx
 
-    logger.debug("Transcribing with %s (int8, cpu)", model_size)
+    print(f"[1/3] Transcribing with {model_size} (int8, cpu)...", file=sys.stderr)
     t = time.time()
     model = whisperx.load_model(model_size, device="cpu", compute_type="int8")
     audio = whisperx.load_audio(audio_path)
     result = model.transcribe(audio, batch_size=16, language=language)
-    logger.debug("%d segments in %.1fs", len(result.get("segments", [])), time.time() - t)
+    print(f"      {len(result.get('segments', []))} segments in {time.time() - t:.1f}s", file=sys.stderr)
 
     del model
     gc.collect()
@@ -56,18 +63,18 @@ def _clear_mlx_cache() -> None:
 def transcribe_mlx(audio_path: str, model_size: str, language: str) -> tuple[dict[str, Any], Any]:
     """Transcribe using mlx-whisper (Apple Silicon GPU backend)."""
     import mlx_whisper
-    import whisperx  # needed for load_audio — returns float32 numpy array at 16kHz
+    import whisperx  # needed for load_audio - returns float32 numpy array at 16kHz
 
     mlx_repo = MLX_MODEL_MAP.get(model_size)
     if mlx_repo is None:
-        logger.warning(
-            "'%s' not in MLX model map; using as HF repo directly. Known sizes: %s",
-            model_size,
-            list(MLX_MODEL_MAP.keys()),
+        print(
+            f"Warning: '{model_size}' not in MLX model map; using as HF repo directly. "
+            f"Requires MLX-converted weights. Known sizes: {list(MLX_MODEL_MAP.keys())}",
+            file=sys.stderr,
         )
         mlx_repo = model_size
 
-    logger.debug("Transcribing with mlx-whisper (%s)", mlx_repo)
+    print(f"[1/3] Transcribing with mlx-whisper ({mlx_repo})...", file=sys.stderr)
     t = time.time()
 
     result: dict[str, Any] = mlx_whisper.transcribe(
@@ -83,7 +90,7 @@ def transcribe_mlx(audio_path: str, model_size: str, language: str) -> tuple[dic
     # Load audio array separately for the align/diarize stages
     audio: Any = whisperx.load_audio(audio_path)
 
-    logger.debug("%d segments in %.1fs", len(result.get("segments", [])), time.time() - t)
+    print(f"      {len(result.get('segments', []))} segments in {time.time() - t:.1f}s", file=sys.stderr)
     return result, audio
 
 
@@ -110,22 +117,35 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
 
     mlx_repo = MLX_MODEL_MAP.get(model_size)
     if mlx_repo is None:
-        logger.warning(
-            "'%s' not in MLX model map; using as HF repo directly. Known sizes: %s",
-            model_size,
-            list(MLX_MODEL_MAP.keys()),
+        print(
+            f"Warning: '{model_size}' not in MLX model map; using as HF repo directly. "
+            f"Requires MLX-converted weights. Known sizes: {list(MLX_MODEL_MAP.keys())}",
+            file=sys.stderr,
         )
         mlx_repo = model_size
 
-    logger.debug("Transcribing with mlx-whisper + VAD (%s)", mlx_repo)
+    print(f"[1/3] Transcribing with mlx-whisper + VAD ({mlx_repo})...", file=sys.stderr)
     t = time.time()
 
     # Load audio (float32 numpy array at 16kHz)
     audio: Any = whisperx.load_audio(audio_path)
 
+    # --- Audio shape sanity-check before pyannote VAD ---
+    audio = np.asarray(audio, dtype=np.float32)
+    if audio.ndim != 1:
+        audio = audio.reshape(-1)
+    if audio.size == 0:
+        raise ValueError(f"Preprocessed audio has 0 samples (file may be corrupt): {audio_path}")
+    # pyannote expects (channels, time) with channels <= time; unsqueeze gives (1, n)
+    waveform: Any = torch.from_numpy(audio).unsqueeze(0)
+    if waveform.ndim != 2 or waveform.shape[0] > waveform.shape[1]:
+        raise ValueError(
+            f"Invalid waveform shape after unsqueeze: {waveform.shape} "
+            f"(expected (channels, time) with channels <= time; audio samples: {audio.size})"
+        )
+
     # Run pyannote VAD to find speech regions
     vad_pipeline: Any = load_vad_model(device="cpu")
-    waveform: Any = torch.from_numpy(audio).unsqueeze(0)
     vad_result: Any = vad_pipeline({"waveform": waveform, "sample_rate": SAMPLE_RATE})
 
     # Merge speech regions into <=30s chunks
@@ -168,7 +188,7 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
     }
 
     n_seg, n_ch = len(all_segments), len(chunks)
-    logger.debug("%d segments from %d VAD chunks in %.1fs", n_seg, n_ch, time.time() - t)
+    print(f"      {n_seg} segments from {n_ch} VAD chunks in {time.time() - t:.1f}s", file=sys.stderr)
     return result, audio
 
 
