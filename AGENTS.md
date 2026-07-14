@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents working with this repository.
 
 ## Project Purpose
 
@@ -10,8 +10,10 @@ Full pipeline:
 ```
 Audio (WAV/M4A/MP3)
   ↓ audio-transcribe process — preprocess + transcribe + align + diarize + format
-  ↓ Claude (via Claudian /process-meeting) — structured summary + vault note
+  ↓ optional external LLM workflow — summary, decisions, action items, and other analysis
 ```
+
+LLM analysis is intentionally outside the `audio-transcribe` runtime. Do not assume a specific model, provider, API, or local inference engine when changing the project contract or user-facing documentation.
 
 ## Setup
 
@@ -24,7 +26,6 @@ HuggingFace token requires accepting the pyannote license at:
 https://huggingface.co/pyannote/speaker-diarization-3.1
 
 External dependency: `ffmpeg` must be installed (`brew install ffmpeg`).
-For LLM summarization: `brew install ollama && ollama pull gemma3:27b`
 
 ## Code Quality Stack
 
@@ -71,14 +72,13 @@ audio-transcribe learn corrected-transcript.md
 
 **Always use `device="cpu"` and `compute_type="int8"`** for WhisperX on Apple Silicon. float16 crashes with ctranslate2 on M4. This is already hardcoded in the scripts.
 
-## Model Choices
+## Transcription Model Choices
 
 | Stage | Model | Notes |
 |-------|-------|-------|
 | ASR | `antony66/whisper-large-v3-russian` | 6.39% WER (vs 9.84% for base large-v3); WhisperX loads HF models directly |
 | Alignment | `jonatasgrosman/wav2vec2-large-xlsr-53-russian` | WhisperX default for `ru`; upgrade to `wav2vec2-xls-r-1b-russian` for better precision |
 | Diarization | `pyannote/speaker-diarization-3.1` | Bundled with WhisperX; needs `HF_TOKEN` |
-| LLM | `gemma3:27b` via Ollama | ~16 GB RAM; sequential execution means Whisper unloads before LLM starts |
 
 ## Output Format
 
@@ -115,7 +115,7 @@ Completed: unified CLI, reactive pipeline, task extraction, people cards, speake
 
 Remaining:
 - **Phase 5**: File watcher, template system
-- **Phase 6**: Local LLM fallback — Ollama/Gemma offline pipeline
+- **Phase 6**: Optional provider-neutral LLM post-processing integration
 
 Vault lives at `/Users/gnezim/_projects/gnezim/knowledge/`. Project spec at `knowledge/projects/personal/audio-transcribe/`.
 
@@ -123,7 +123,7 @@ Vault lives at `/Users/gnezim/_projects/gnezim/knowledge/`. Project spec at `kno
 
 ## Memory Budget (24 GB M4)
 
-Sequential execution is intentional — Whisper (~6 GB) unloads before Ollama/Gemma 27B (~16 GB) loads. Do not attempt to run both simultaneously.
+Keep memory-intensive downstream analysis outside the transcription process. Workflows that run a local LLM should schedule it after transcription resources are released and choose a model appropriate for the host's available memory.
 
 ## Markdown Style
 

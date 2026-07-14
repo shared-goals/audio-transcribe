@@ -171,7 +171,7 @@ audio-transcribe self-update
 
 ## Output
 
-Each run produces a Markdown meeting note with YAML frontmatter (speakers, audio data path, timestamps) and a Transcript section. Post-processing with Claude adds Summary, Key Points, Decisions, and Action Items.
+Each run produces a Markdown meeting note with YAML frontmatter (speakers, audio data path, timestamps) and a Transcript section. Optional downstream LLM post-processing can add sections such as Summary, Key Points, Decisions, and Action Items. This analysis step is outside `audio-transcribe` and may use any local or hosted model or provider.
 
 ## Development
 

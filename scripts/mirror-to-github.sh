@@ -3,8 +3,8 @@
 #
 # Excluded:
 #   docs/plans/     — internal design docs with personal paths/references
-#   CLAUDE.md       — Claude Code instructions with personal paths
-#   .claude/        — Claude Code project config
+#   AGENTS.md       — development-agent instructions with personal paths
+#   .claude/        — local development-agent project config
 #
 # The script creates a temporary clean clone, removes excluded paths,
 # retargets only release tags attached to the tip, and force-pushes the public tree.
@@ -18,7 +18,7 @@ BRANCH="main"
 # Paths to exclude from the public mirror
 EXCLUDE_PATHS=(
     "docs/plans"
-    "CLAUDE.md"
+    "AGENTS.md"
     ".claude"
     ".gitea"
     "scripts/mirror-to-github.sh"
