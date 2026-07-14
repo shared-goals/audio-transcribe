@@ -6,7 +6,13 @@ updates:
       interval: weekly
     groups:
       development-tools:
-        dependency-type: development
+        patterns:
+          - mypy
+          - pip-audit
+          - pytest
+          - pytest-cov
+          - ruff
+          - types-*
       ml-stack:
         patterns:
           - mlx-whisper
@@ -14,8 +20,18 @@ updates:
           - torch*
           - transformers
           - whisperx
+    ignore:
+      # Numba 0.66 requires NumPy <2.5.
+      - dependency-name: numpy
+        versions: [">=2.5"]
+      # WhisperX 3.8 requires the Torch 2.8 / TorchCodec 0.7 stack.
+      - dependency-name: torch
+        versions: [">=2.9"]
+      - dependency-name: torchaudio
+        versions: [">=2.9"]
+      - dependency-name: torchcodec
+        versions: [">=0.8"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
-
