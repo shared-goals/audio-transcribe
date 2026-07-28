@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file. Format foll
 ### Added
 - Private reference dataset preparation for reproducible ASR benchmarks
 - WER, CER, terminology, missed-speech, hallucination, and VAD-boundary metrics
+- Isolated MLX-VAD benchmark candidates with vocabulary and context controls
 
 ### Fixed
 - Preserve mixed reviewed/unclear candidate text and detect partial-overlap hallucinations in ASR benchmarks

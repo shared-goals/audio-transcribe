@@ -8,6 +8,7 @@ import logging
 import sys
 import time
 import warnings
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -31,6 +32,15 @@ MLX_MODEL_MAP: dict[str, str] = {
     "large-v3": "mlx-community/whisper-large-v3-mlx",
     "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
 }
+
+
+@dataclass(frozen=True)
+class MlxVadOptions:
+    """Configurable MLX-VAD inference controls with production-safe defaults."""
+
+    chunk_size_s: int = 30
+    condition_on_previous_text: bool = False
+    initial_prompt: str | None = None
 
 
 def transcribe(audio_path: str, model_size: str, language: str) -> tuple[dict[str, Any], Any]:
@@ -101,7 +111,12 @@ def _offset_segments(segments: list[dict[str, Any]], offset: float) -> list[dict
     return segments
 
 
-def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple[dict[str, Any], Any]:
+def transcribe_mlx_vad(
+    audio_path: str,
+    model_size: str,
+    language: str,
+    options: MlxVadOptions | None = None,
+) -> tuple[dict[str, Any], Any]:
     """Transcribe using pyannote VAD pre-segmentation + mlx-whisper decoder.
 
     Combines whisperx's pyannote VAD (splits audio into <=30s speech chunks)
@@ -114,6 +129,7 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
     from whisperx.audio import SAMPLE_RATE
     from whisperx.vads.pyannote import Pyannote, load_vad_model
 
+    resolved_options = options or MlxVadOptions()
     mlx_repo = MLX_MODEL_MAP.get(model_size)
     if mlx_repo is None:
         logger.warning(
@@ -143,7 +159,12 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
 
     # Keep chunks short: 60-second chunks caused merged speech and hallucinated
     # text in quiet tails during the 2026-07-28 quality benchmark.
-    chunks: list[dict[str, Any]] = Pyannote.merge_chunks(vad_result, chunk_size=30, onset=0.5, offset=0.363)
+    chunks: list[dict[str, Any]] = Pyannote.merge_chunks(
+        vad_result,
+        chunk_size=resolved_options.chunk_size_s,
+        onset=0.5,
+        offset=0.363,
+    )
 
     # Free VAD model before mlx-whisper decoder loads
     del vad_pipeline
@@ -161,13 +182,15 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
         end_sample = int(chunk["end"] * SAMPLE_RATE)
         chunk_audio: Any = audio[start_sample:end_sample]
 
-        chunk_result: dict[str, Any] = mlx_whisper.transcribe(
-            chunk_audio,
-            path_or_hf_repo=mlx_repo,
-            language=language if language else None,
-            word_timestamps=False,
-            condition_on_previous_text=False,
-        )
+        transcribe_kwargs: dict[str, Any] = {
+            "path_or_hf_repo": mlx_repo,
+            "language": language if language else None,
+            "word_timestamps": False,
+            "condition_on_previous_text": resolved_options.condition_on_previous_text,
+        }
+        if resolved_options.initial_prompt is not None:
+            transcribe_kwargs["initial_prompt"] = resolved_options.initial_prompt
+        chunk_result: dict[str, Any] = mlx_whisper.transcribe(chunk_audio, **transcribe_kwargs)
 
         # Offset chunk-relative timestamps to absolute positions
         all_segments.extend(_offset_segments(chunk_result.get("segments", []), chunk["start"]))
@@ -179,6 +202,9 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
         "text": " ".join(seg.get("text", "") for seg in all_segments),
         "language": language,
         "segments": all_segments,
+        "_benchmark_vad_boundaries": tuple(
+            float(boundary) for chunk in chunks for boundary in (chunk["start"], chunk["end"])
+        ),
     }
 
     n_seg, n_ch = len(all_segments), len(chunks)

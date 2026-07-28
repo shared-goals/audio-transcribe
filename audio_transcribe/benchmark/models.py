@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
+
+from audio_transcribe.stages.transcribe import MlxVadOptions
 
 
 @dataclass(frozen=True)
@@ -40,3 +43,25 @@ class AsrMetrics:
     hallucinated_phrases: tuple[str, ...]
     missed_phrases: tuple[str, ...]
     boundary_errors: int
+
+
+@dataclass(frozen=True)
+class AsrCandidate:
+    """One isolated MLX-VAD model and inference configuration."""
+
+    name: str
+    model: str
+    options: MlxVadOptions
+
+
+@dataclass(frozen=True)
+class AsrRunResult:
+    """Outcome and resource measurements from one ASR candidate."""
+
+    candidate: AsrCandidate
+    result: dict[str, Any] | None
+    stage_times_s: dict[str, float]
+    peak_rss_mb: float
+    vad_boundaries: tuple[float, ...]
+    status: str
+    error: str | None

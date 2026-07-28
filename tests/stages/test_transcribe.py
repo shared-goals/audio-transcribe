@@ -1,7 +1,7 @@
 """Tests for audio_transcribe.stages.transcribe — build_output (pure function) and MLX integration."""
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import numpy as np
 import pytest
@@ -102,6 +102,15 @@ def test_build_output_no_words_key_when_absent():
     result_in = {"segments": [{"start": 0.0, "end": 1.0, "text": "test"}]}
     output = build_output(result_in, "a.wav", "ru", "large-v3", 1.0)
     assert "words" not in output["segments"][0]
+
+
+def test_build_output_omits_private_benchmark_keys():
+    result_in = {
+        "segments": [{"start": 0.0, "end": 1.0, "text": "test"}],
+        "_benchmark_vad_boundaries": (0.0, 1.0),
+    }
+    output = build_output(result_in, "a.wav", "ru", "large-v3", 1.0)
+    assert "_benchmark_vad_boundaries" not in output
 
 
 # --- MLX model map tests ---
@@ -339,20 +348,33 @@ def test_transcribe_mlx_vad_offsets_timestamps(tmp_path):
             vad_chunks=[{"start": 10.0, "end": 25.0, "segments": [(10.0, 25.0)]}],
             transcribe_results=[chunk_result],
         )
-        result, _audio = mod.transcribe_mlx_vad(str(dummy_audio), "large-v3", "ru")
+        options = mod.MlxVadOptions(
+            chunk_size_s=30,
+            condition_on_previous_text=False,
+            initial_prompt="Бусурина, ЧТЗ, опытная эксплуатация",
+        )
+        result, _audio = mod.transcribe_mlx_vad(str(dummy_audio), "large-v3", "ru", options)
         sys.modules["whisperx.vads.pyannote"].Pyannote.merge_chunks.assert_called_once_with(
             sys.modules["whisperx.vads.pyannote"].load_vad_model.return_value.return_value,
-            chunk_size=30,
+            chunk_size=options.chunk_size_s,
             onset=0.5,
             offset=0.363,
         )
-        assert mock_mlx.transcribe.call_args.kwargs["condition_on_previous_text"] is False
+        mock_mlx.transcribe.assert_called_once_with(
+            ANY,
+            path_or_hf_repo="mlx-community/whisper-large-v3-mlx",
+            language="ru",
+            word_timestamps=False,
+            condition_on_previous_text=False,
+            initial_prompt="Бусурина, ЧТЗ, опытная эксплуатация",
+        )
 
     assert len(result["segments"]) == 2
     assert result["segments"][0]["start"] == 10.0
     assert result["segments"][0]["end"] == 12.5
     assert result["segments"][1]["start"] == 13.0
     assert result["segments"][1]["end"] == 15.0
+    assert result["_benchmark_vad_boundaries"] == (10.0, 25.0)
 
 
 def test_transcribe_mlx_vad_processes_multiple_chunks(tmp_path):
@@ -388,6 +410,32 @@ def test_transcribe_mlx_vad_processes_multiple_chunks(tmp_path):
     assert result["segments"][0]["end"] == 7.0
     assert result["segments"][1]["start"] == 60.0
     assert result["segments"][1]["end"] == 63.0
+
+
+def test_transcribe_mlx_vad_defaults_preserve_production_call(tmp_path):
+    dummy_audio = tmp_path / "test.wav"
+    dummy_audio.touch()
+
+    with pytest.MonkeyPatch().context() as mp:
+        mock_mlx, mod, _mock_mx = _setup_mlx_vad_mocks(
+            mp,
+            vad_chunks=[{"start": 0.0, "end": 10.0, "segments": [(0.0, 10.0)]}],
+            transcribe_results=[{"text": "test", "language": "ru", "segments": []}],
+        )
+        mod.transcribe_mlx_vad(str(dummy_audio), "large-v3", "ru")
+
+    assert mod.MlxVadOptions() == mod.MlxVadOptions(
+        chunk_size_s=30,
+        condition_on_previous_text=False,
+        initial_prompt=None,
+    )
+    mock_mlx.transcribe.assert_called_once_with(
+        ANY,
+        path_or_hf_repo="mlx-community/whisper-large-v3-mlx",
+        language="ru",
+        word_timestamps=False,
+        condition_on_previous_text=False,
+    )
 
 
 def test_transcribe_mlx_vad_empty_vad(tmp_path):
