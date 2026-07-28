@@ -125,7 +125,14 @@ def _candidate_definition(
                 raise ValueError("winner-context evidence checksum mismatch")
             result_candidate = result.get("candidate")
             manifest_candidate = result_manifest.get("candidate_name")
-            if winner_name in {result_candidate, manifest_candidate}:
+            if (
+                not isinstance(result_candidate, str)
+                or not result_candidate
+                or not isinstance(manifest_candidate, str)
+                or not manifest_candidate
+            ):
+                raise ValueError("winner-context winner evidence is invalid")
+            if result_candidate == winner_name or manifest_candidate == winner_name:
                 metrics_payload = result.get("metrics")
                 if (
                     result_candidate != winner_name

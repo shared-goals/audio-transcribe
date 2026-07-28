@@ -258,6 +258,53 @@ def test_winner_context_rejects_invalid_winner_result_before_model_launch(
     assert "winner-context winner evidence is invalid" in result.output
 
 
+@pytest.mark.parametrize(
+    ("result_candidate", "manifest_candidate"),
+    (
+        (["baseline"], "baseline"),
+        ("baseline", {"name": "baseline"}),
+    ),
+)
+def test_winner_context_rejects_malformed_candidate_identity_cleanly(
+    tmp_path: Path,
+    result_candidate: object,
+    manifest_candidate: object,
+) -> None:
+    dataset, _audio = _accepted_dataset(tmp_path)
+    result_manifest = asdict(_manifest(dataset))
+    result_manifest["candidate_name"] = manifest_candidate
+    (dataset / "metrics.json").write_text(
+        json.dumps(
+            {
+                "ranking": {"default_winner": "baseline"},
+                "results": [
+                    {
+                        "candidate": result_candidate,
+                        "manifest": result_manifest,
+                        "status": "completed",
+                        "error": None,
+                        "metrics": _valid_metrics(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with patch(
+        "audio_transcribe.benchmark.cli.run_asr_candidate",
+        side_effect=AssertionError("model must not run"),
+    ):
+        result = runner.invoke(
+            app,
+            ["benchmark", "run-asr", "--dataset", str(dataset), "--candidate", "winner-context"],
+        )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "winner-context winner evidence is invalid" in result.output
+
+
 def test_report_rejects_stale_run_manifest_checksums(tmp_path: Path) -> None:
     dataset, _audio = _accepted_dataset(tmp_path)
     run_dir = dataset / "runs" / "baseline"

@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file. Format foll
 - Private ASR benchmark CLI for reference preparation, candidate runs, evaluation, and reports
 
 ### Fixed
+- Reject malformed ASR winner candidate identities as clean CLI evidence errors before model launch
 - Require completed, identity-matching, valid-metrics evidence before rerunning the ASR winner with context
 - Reject stale winner-context rankings and legacy ASR run manifests without a required vocabulary checksum
 - Bind ASR benchmark runs and evaluations to accepted audio, transcript, and vocabulary checksums; use source duration for RTF and preserve failures when Git provenance is unavailable
