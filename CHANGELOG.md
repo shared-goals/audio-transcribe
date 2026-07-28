@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file. Format foll
 - WER, CER, terminology, missed-speech, hallucination, and VAD-boundary metrics
 - Isolated MLX-VAD benchmark candidates with vocabulary and context controls
 - Checksum-bound benchmark manifests, quality ranking, and two-hour runtime forecasts
+- Private ASR benchmark CLI for reference preparation, candidate runs, evaluation, and reports
 
 ### Fixed
 - Reject duplicate, inconsistent, or non-finite ASR benchmark runs before writing strict JSON and Markdown reports

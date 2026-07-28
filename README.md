@@ -121,6 +121,22 @@ audio-transcribe learn corrected-transcript.md
 audio-transcribe process recording.m4a --json
 ```
 
+### Private ASR benchmarks
+
+Benchmark inputs and outputs stay in an explicitly selected private dataset directory. `prepare` imports the current note only as an editable draft; accept it as `reference-transcript.md`, set `reference_status` and `reference_sha256`, and add explicit `models.baseline` and `models.russian` definitions to `benchmark.json` before running candidates.
+
+```zsh
+audio-transcribe benchmark prepare recording.mp3 --current-note current-note.md --dataset private-benchmark
+audio-transcribe benchmark run-asr --dataset private-benchmark --candidate baseline
+audio-transcribe benchmark run-asr --dataset private-benchmark --candidate vocabulary
+audio-transcribe benchmark run-asr --dataset private-benchmark --candidate russian
+audio-transcribe benchmark evaluate-asr --dataset private-benchmark
+audio-transcribe benchmark report --dataset private-benchmark
+audio-transcribe benchmark run-asr --dataset private-benchmark --candidate winner-context
+```
+
+The four candidates are the generic baseline, the baseline with reviewed `vocabulary.txt` passed as Whisper's `initial_prompt`, the explicitly configured Russian model, and the initial winner retested with previous-text context. These commands do not change the production model or backend defaults.
+
 ### Profiles, resume, and templates
 
 Interrupted runs resume automatically from `~/.audio-transcribe/runs/`. Use `--force` for a clean run, `--restart-from align` to invalidate one stage and everything after it, or `--keep-workdir` to retain normalized audio.
