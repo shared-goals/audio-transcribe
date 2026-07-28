@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file. Format foll
 - Private reference dataset preparation for reproducible ASR benchmarks
 - WER, CER, terminology, missed-speech, hallucination, and VAD-boundary metrics
 
+### Fixed
+- Preserve mixed reviewed/unclear candidate text and detect partial-overlap hallucinations in ASR benchmarks
+- Normalize underscores as separators and require whole-token terminology matches in ASR benchmarks
+
 ## [0.5.1] - 2026-07-28
 
 ### Fixed

@@ -80,6 +80,41 @@ def test_evaluate_asr_reports_hallucinated_candidate_phrase() -> None:
     assert metrics.hallucinated_phrases == ("Лишняя фраза",)
 
 
+def test_evaluate_asr_reports_candidate_with_uncovered_tail_as_hallucinated() -> None:
+    """A long candidate covering reference speech and extra time must remain a hallucination signal."""
+    reference = ReferenceDocument("sha", (ReferenceSpan(0.0, 2.0, "Первый этап.", False),))
+
+    metrics = evaluate_asr(
+        reference,
+        [{"start": 0.0, "end": 5.0, "text": "Первый этап. Лишняя фраза."}],
+        (),
+        (),
+    )
+
+    assert metrics.hallucinated_phrases == ("Первый этап. Лишняя фраза.",)
+
+
+def test_evaluate_asr_keeps_candidate_text_with_reviewed_and_unclear_overlap() -> None:
+    """A mixed reviewed/unclear segment must not discard its reviewed candidate speech."""
+    reference = ReferenceDocument(
+        "sha",
+        (
+            ReferenceSpan(0.0, 2.0, "Первый этап.", False),
+            ReferenceSpan(2.0, 5.0, "[неразборчиво]", True),
+        ),
+    )
+
+    metrics = evaluate_asr(
+        reference,
+        [{"start": 0.0, "end": 5.0, "text": "Первый этап"}],
+        (),
+        (),
+    )
+
+    assert metrics.wer == 0.0
+    assert metrics.hypothesis_words == 2
+
+
 def test_evaluate_asr_reports_missing_reference_phrase() -> None:
     """A reviewed speech interval without candidate text must be exposed as missed."""
     reference = ReferenceDocument(
@@ -116,3 +151,23 @@ def test_evaluate_asr_counts_mismatch_near_vad_boundary() -> None:
     )
 
     assert metrics.boundary_errors == 1
+
+
+def test_evaluate_asr_normalizes_fullwidth_underscore_as_word_separator() -> None:
+    """NFKC-normalized underscores must separate words like other punctuation."""
+    reference = ReferenceDocument("sha", (ReferenceSpan(0.0, 2.0, "Проект＿А", False),))
+
+    metrics = evaluate_asr(reference, [{"start": 0.0, "end": 2.0, "text": "проект а"}], (), ())
+
+    assert metrics.wer == 0.0
+    assert metrics.cer == 0.0
+
+
+def test_evaluate_asr_does_not_count_term_substrings_as_hits() -> None:
+    """A vocabulary token must not match only as part of a longer recognized word."""
+    reference = ReferenceDocument("sha", (ReferenceSpan(0.0, 2.0, "Задача выполнена.", False),))
+
+    metrics = evaluate_asr(reference, [{"start": 0.0, "end": 2.0, "text": "задача выполнена"}], ("за",), ())
+
+    assert metrics.term_hits == 0
+    assert metrics.term_recall == 0.0

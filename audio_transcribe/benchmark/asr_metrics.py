@@ -10,7 +10,7 @@ from jiwer import process_characters, process_words
 
 from audio_transcribe.benchmark.models import AsrMetrics, ReferenceDocument, ReferenceSpan
 
-_PUNCTUATION = re.compile(r"[^\w\s]", flags=re.UNICODE)
+_PUNCTUATION = re.compile(r"[\W_]+", flags=re.UNICODE)
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -35,6 +35,35 @@ def _best_overlap(start_s: float, end_s: float, spans: tuple[ReferenceSpan, ...]
             best_span = span
             best_duration = duration
     return best_span
+
+
+def _has_reviewed_overlap(start_s: float, end_s: float, spans: tuple[ReferenceSpan, ...]) -> bool:
+    """Return whether an interval overlaps any evaluable reference speech."""
+    return any(not span.excluded and _interval_overlap(start_s, end_s, span) > 0.0 for span in spans)
+
+
+def _has_uncovered_time(start_s: float, end_s: float, spans: tuple[ReferenceSpan, ...]) -> bool:
+    """Return whether an interval contains time not covered by any reference span."""
+    covered_until = start_s
+    overlaps = sorted(
+        (
+            max(start_s, span.start_s),
+            min(end_s, span.end_s),
+        )
+        for span in spans
+        if _interval_overlap(start_s, end_s, span) > 0.0
+    )
+    for overlap_start, overlap_end in overlaps:
+        if overlap_start > covered_until:
+            return True
+        covered_until = max(covered_until, overlap_end)
+    return covered_until < end_s
+
+
+def _contains_token_sequence(tokens: list[str], term_tokens: list[str]) -> bool:
+    """Return whether a normalized vocabulary term appears as consecutive whole tokens."""
+    term_length = len(term_tokens)
+    return bool(term_tokens) and any(tokens[index : index + term_length] == term_tokens for index in range(len(tokens)))
 
 
 def _candidate_values(segment: dict[str, Any]) -> tuple[float, float, str]:
@@ -63,23 +92,31 @@ def evaluate_asr(
         start_s, end_s, text = _candidate_values(segment)
         normalized_text = _normalize(text)
         best_span = _best_overlap(start_s, end_s, reference.spans)
-        if best_span is None:
+        has_reviewed_overlap = _has_reviewed_overlap(start_s, end_s, reference.spans)
+        has_uncovered_time = _has_uncovered_time(start_s, end_s, reference.spans)
+        if normalized_text and has_uncovered_time:
+            hallucinated_phrases.append(text)
+        if has_reviewed_overlap or has_uncovered_time:
             candidate_texts.append(normalized_text)
-            if normalized_text:
-                hallucinated_phrases.append(text)
+        if best_span is None or best_span.excluded:
             continue
-        if best_span.excluded:
-            continue
-        candidate_texts.append(normalized_text)
-        is_boundary_mismatch = normalized_text and normalized_text != _normalize(best_span.text)
+        is_boundary_mismatch = (
+            normalized_text and best_span is not None and normalized_text != _normalize(best_span.text)
+        )
         if is_boundary_mismatch and _near_boundary(start_s, end_s, boundaries):
             boundary_errors += 1
 
     hypothesis_text = " ".join(candidate_texts)
     word_output = process_words(reference_text, hypothesis_text)
     character_output = process_characters(reference_text, hypothesis_text)
-    normalized_terms = tuple(_normalize(term) for term in terms)
-    term_hits = sum(bool(term) and term in reference_text and term in hypothesis_text for term in normalized_terms)
+    normalized_terms = tuple(_normalize(term).split() for term in terms)
+    reference_tokens = reference_text.split()
+    hypothesis_tokens = hypothesis_text.split()
+    term_hits = sum(
+        _contains_token_sequence(reference_tokens, term_tokens)
+        and _contains_token_sequence(hypothesis_tokens, term_tokens)
+        for term_tokens in normalized_terms
+    )
     missed_phrases = tuple(
         span.text
         for span in reference.spans
