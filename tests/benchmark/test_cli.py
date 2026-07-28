@@ -13,7 +13,7 @@ import pytest
 from typer.testing import CliRunner
 
 from audio_transcribe.benchmark.cli import _git_commit
-from audio_transcribe.benchmark.models import AsrCandidate, AsrRunResult, RunManifest
+from audio_transcribe.benchmark.models import AsrCandidate, AsrMetrics, AsrRunResult, RunManifest
 from audio_transcribe.cli import app
 from audio_transcribe.preflight import PreflightResult
 from audio_transcribe.stages.transcribe import MlxVadOptions
@@ -71,6 +71,32 @@ def _manifest(dataset: Path, **overrides: object) -> RunManifest:
     }
     values.update(overrides)
     return RunManifest(**values)  # type: ignore[arg-type]
+
+
+def _valid_metrics() -> dict[str, object]:
+    return asdict(
+        AsrMetrics(
+            wer=0.1,
+            cer=0.05,
+            substitutions=1,
+            deletions=0,
+            insertions=0,
+            reference_words=10,
+            hypothesis_words=10,
+            term_hits=1,
+            term_total=1,
+            term_recall=1.0,
+            hallucinated_phrases=(),
+            missed_phrases=(),
+            boundary_errors=0,
+        )
+    )
+
+
+def _invalid_metrics() -> dict[str, object]:
+    metrics = _valid_metrics()
+    metrics["term_hits"] = 2
+    return metrics
 
 
 def test_benchmark_help_lists_commands() -> None:
@@ -181,6 +207,55 @@ def test_winner_context_rejects_ranking_from_previous_accepted_evidence(tmp_path
 
     assert result.exit_code == 1
     assert "winner-context evidence checksum mismatch" in result.output
+
+
+@pytest.mark.parametrize(
+    ("result_status", "result_error", "metrics", "manifest_overrides"),
+    (
+        ("failed", "model unavailable", None, {"candidate_name": "russian", "status": "failed", "error": "failed"}),
+        ("completed", None, None, {}),
+        ("completed", None, _valid_metrics(), {"candidate_name": "russian"}),
+        ("completed", None, _invalid_metrics(), {}),
+    ),
+)
+def test_winner_context_rejects_invalid_winner_result_before_model_launch(
+    tmp_path: Path,
+    result_status: str,
+    result_error: str | None,
+    metrics: dict[str, object] | None,
+    manifest_overrides: dict[str, object],
+) -> None:
+    dataset, _audio = _accepted_dataset(tmp_path)
+    result_manifest = asdict(_manifest(dataset, **manifest_overrides))
+    (dataset / "metrics.json").write_text(
+        json.dumps(
+            {
+                "ranking": {"default_winner": "baseline"},
+                "results": [
+                    {
+                        "candidate": "baseline",
+                        "manifest": result_manifest,
+                        "status": result_status,
+                        "error": result_error,
+                        "metrics": metrics,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with patch(
+        "audio_transcribe.benchmark.cli.run_asr_candidate",
+        side_effect=AssertionError("model must not run"),
+    ):
+        result = runner.invoke(
+            app,
+            ["benchmark", "run-asr", "--dataset", str(dataset), "--candidate", "winner-context"],
+        )
+
+    assert result.exit_code == 1
+    assert "winner-context winner evidence is invalid" in result.output
 
 
 def test_report_rejects_stale_run_manifest_checksums(tmp_path: Path) -> None:

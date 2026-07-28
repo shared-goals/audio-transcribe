@@ -21,6 +21,7 @@ from audio_transcribe.benchmark.models import (
     AsrMetrics,
     EvaluatedAsrRun,
     RunManifest,
+    validate_asr_metrics,
 )
 from audio_transcribe.benchmark.reference import parse_reference, prepare_reference
 from audio_transcribe.benchmark.report import write_report
@@ -110,7 +111,7 @@ def _candidate_definition(
             manifest["reference_sha256"],
             manifest["vocabulary_sha256"],
         )
-        result_candidates: set[str] = set()
+        winner_verified = False
         for result in results:
             result_manifest = result.get("manifest") if isinstance(result, dict) else None
             if not isinstance(result_manifest, dict):
@@ -123,10 +124,26 @@ def _candidate_definition(
             if result_checksums != expected:
                 raise ValueError("winner-context evidence checksum mismatch")
             result_candidate = result.get("candidate")
-            if isinstance(result_candidate, str):
-                result_candidates.add(result_candidate)
-        if winner_name not in result_candidates:
-            raise ValueError("winner-context winner is missing checksum-bound evidence")
+            manifest_candidate = result_manifest.get("candidate_name")
+            if winner_name in {result_candidate, manifest_candidate}:
+                metrics_payload = result.get("metrics")
+                if (
+                    result_candidate != winner_name
+                    or manifest_candidate != winner_name
+                    or result.get("status") != "completed"
+                    or result.get("error") is not None
+                    or result_manifest.get("status") != "completed"
+                    or result_manifest.get("error") is not None
+                    or not isinstance(metrics_payload, dict)
+                ):
+                    raise ValueError("winner-context winner evidence is invalid")
+                try:
+                    validate_asr_metrics(_asr_metrics(metrics_payload))
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError("winner-context winner evidence is invalid") from exc
+                winner_verified = True
+        if not winner_verified:
+            raise ValueError("winner-context winner evidence is invalid")
         selected_name = winner_name
         condition_on_previous_text = True
     model_key = "russian" if selected_name == "russian" else "baseline"
