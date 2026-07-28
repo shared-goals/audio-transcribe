@@ -7,11 +7,13 @@ import json
 import platform
 import subprocess
 from dataclasses import asdict
+from math import isfinite
 from pathlib import Path
 from typing import Annotated, Any
 
 import typer
 
+from audio_transcribe import preflight
 from audio_transcribe.benchmark.asr_metrics import evaluate_asr
 from audio_transcribe.benchmark.asr_runner import run_asr_candidate
 from audio_transcribe.benchmark.models import (
@@ -23,6 +25,7 @@ from audio_transcribe.benchmark.models import (
 from audio_transcribe.benchmark.reference import parse_reference, prepare_reference
 from audio_transcribe.benchmark.report import write_report
 from audio_transcribe.benchmark.store import write_run
+from audio_transcribe.pipeline import _probe_duration
 from audio_transcribe.stages.transcribe import MlxVadOptions
 from audio_transcribe.util import atomic_write_text
 
@@ -38,7 +41,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _load_dataset(dataset: Path) -> tuple[Path, dict[str, Any], Path]:
+def _load_dataset(dataset: Path) -> tuple[Path, dict[str, Any], Path, Path]:
     root = dataset.expanduser().resolve()
     manifest_path = root / "benchmark.json"
     if not root.is_dir() or not manifest_path.is_file():
@@ -52,7 +55,13 @@ def _load_dataset(dataset: Path) -> tuple[Path, dict[str, Any], Path]:
     reference_sha256 = manifest.get("reference_sha256")
     if not isinstance(reference_sha256, str) or _sha256(reference) != reference_sha256:
         raise ValueError("benchmark reference checksum mismatch")
-    return root, manifest, reference
+    vocabulary = root / "vocabulary.txt"
+    vocabulary_sha256 = manifest.get("vocabulary_sha256")
+    if manifest.get("vocabulary_status") != "accepted" or not vocabulary.is_file():
+        raise ValueError("benchmark requires an accepted vocabulary")
+    if not isinstance(vocabulary_sha256, str) or _sha256(vocabulary) != vocabulary_sha256:
+        raise ValueError("benchmark vocabulary checksum mismatch")
+    return root, manifest, reference, vocabulary
 
 
 def _audio_path(manifest: dict[str, Any]) -> Path:
@@ -66,10 +75,7 @@ def _audio_path(manifest: dict[str, Any]) -> Path:
     return audio
 
 
-def _vocabulary(dataset: Path) -> str:
-    path = dataset / "vocabulary.txt"
-    if not path.is_file():
-        raise ValueError("benchmark vocabulary.txt is missing")
+def _vocabulary(path: Path) -> str:
     terms = tuple(line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
     return ", ".join(terms)
 
@@ -77,6 +83,7 @@ def _vocabulary(dataset: Path) -> str:
 def _candidate_definition(
     dataset: Path,
     manifest: dict[str, Any],
+    vocabulary_path: Path,
     candidate_name: str,
 ) -> tuple[AsrCandidate, str | None, str | None]:
     if candidate_name not in _CANDIDATES:
@@ -101,7 +108,7 @@ def _candidate_definition(
     model = models.get(model_key)
     if not isinstance(model, str) or not model:
         raise ValueError(f"benchmark model definition is missing: {model_key}")
-    prompt = _vocabulary(dataset) if selected_name == "vocabulary" else None
+    prompt = _vocabulary(vocabulary_path) if selected_name == "vocabulary" else None
     options = MlxVadOptions(
         chunk_size_s=30,
         condition_on_previous_text=condition_on_previous_text,
@@ -117,13 +124,25 @@ def _candidate_definition(
 
 
 def _git_commit() -> str:
-    completed = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return completed.stdout.strip()
+    repository = Path(__file__).resolve().parents[2]
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repository), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unavailable"
+    value = completed.stdout.strip()
+    return value if value else "unavailable"
+
+
+def _probe_audio_duration(audio: Path) -> float:
+    duration_s = _probe_duration(str(audio))
+    if not isinstance(duration_s, (int, float)) or not isfinite(duration_s) or duration_s <= 0.0:
+        raise ValueError("benchmark source audio duration is unavailable")
+    return float(duration_s)
 
 
 def _manifest_for_run(
@@ -148,6 +167,7 @@ def _manifest_for_run(
         peak_rss_mb=peak_rss_mb,
         status=status,
         error=error,
+        vocabulary_sha256=str(dataset_manifest["vocabulary_sha256"]),
     )
 
 
@@ -162,7 +182,7 @@ def _asr_metrics(payload: dict[str, Any]) -> AsrMetrics:
     return AsrMetrics(**converted)
 
 
-def _evaluated_runs(dataset: Path) -> tuple[EvaluatedAsrRun, ...]:
+def _evaluated_runs(dataset: Path, dataset_manifest: dict[str, Any]) -> tuple[EvaluatedAsrRun, ...]:
     runs_dir = dataset / "runs"
     values: list[EvaluatedAsrRun] = []
     for candidate_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
@@ -172,6 +192,19 @@ def _evaluated_runs(dataset: Path) -> tuple[EvaluatedAsrRun, ...]:
             continue
         manifest = _run_manifest(json.loads(manifest_path.read_text(encoding="utf-8")))
         evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
+        expected = (
+            dataset_manifest["audio_sha256"],
+            dataset_manifest["reference_sha256"],
+            dataset_manifest["vocabulary_sha256"],
+        )
+        run_checksums = (manifest.source_sha256, manifest.reference_sha256, manifest.vocabulary_sha256)
+        evaluation_checksums = (
+            evaluation.get("source_sha256"),
+            evaluation.get("reference_sha256"),
+            evaluation.get("vocabulary_sha256"),
+        )
+        if run_checksums != expected or evaluation_checksums != expected:
+            raise ValueError(f"benchmark run checksum mismatch: {manifest.candidate_name}")
         metrics_payload = evaluation.get("metrics")
         values.append(
             EvaluatedAsrRun(
@@ -208,9 +241,12 @@ def run_asr(
 ) -> None:
     """Run and persist one isolated ASR candidate."""
     try:
-        root, dataset_manifest, _reference = _load_dataset(dataset)
+        root, dataset_manifest, _reference, vocabulary_path = _load_dataset(dataset)
         audio = _audio_path(dataset_manifest)
-        definition, revision, align_model = _candidate_definition(root, dataset_manifest, candidate)
+        definition, revision, align_model = _candidate_definition(root, dataset_manifest, vocabulary_path, candidate)
+        preflight_result = preflight.check(str(audio), backend="mlx-vad", skip_diarize=True)
+        if not preflight_result.ok:
+            raise ValueError("\n".join(preflight_result.errors))
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
@@ -244,11 +280,12 @@ def evaluate_asr_command(
 ) -> None:
     """Evaluate all persisted ASR runs against the accepted reference."""
     try:
-        root, dataset_manifest, reference_path = _load_dataset(dataset)
-        _audio_path(dataset_manifest)
+        root, dataset_manifest, reference_path, vocabulary_path = _load_dataset(dataset)
+        audio = _audio_path(dataset_manifest)
+        duration_s = _probe_audio_duration(audio)
         reference = parse_reference(reference_path)
         vocabulary = tuple(
-            line.strip() for line in (root / "vocabulary.txt").read_text(encoding="utf-8").splitlines() if line.strip()
+            line.strip() for line in vocabulary_path.read_text(encoding="utf-8").splitlines() if line.strip()
         )
         evaluated = 0
         for candidate_dir in sorted(path for path in (root / "runs").iterdir() if path.is_dir()):
@@ -260,6 +297,7 @@ def evaluate_asr_command(
             if (
                 manifest.source_sha256 != dataset_manifest["audio_sha256"]
                 or manifest.reference_sha256 != dataset_manifest["reference_sha256"]
+                or manifest.vocabulary_sha256 != dataset_manifest["vocabulary_sha256"]
             ):
                 raise ValueError("benchmark checksum mismatch")
             metrics: AsrMetrics | None = None
@@ -269,11 +307,14 @@ def evaluate_asr_command(
                 segments = result.get("segments", [])
                 boundaries = tuple(float(value) for value in result.get("vad_boundaries", ()))
                 metrics = evaluate_asr(reference, segments, vocabulary, boundaries)
-                duration_s = max((float(segment.get("end", 0.0)) for segment in segments), default=0.0)
-                if duration_s <= 0.0:
-                    raise ValueError(f"completed run has no audio duration: {manifest.candidate_name}")
                 rtf = sum(manifest.stage_times_s.values()) / duration_s
-            payload = {"metrics": asdict(metrics) if metrics is not None else None, "rtf": rtf}
+            payload = {
+                "source_sha256": dataset_manifest["audio_sha256"],
+                "reference_sha256": dataset_manifest["reference_sha256"],
+                "vocabulary_sha256": dataset_manifest["vocabulary_sha256"],
+                "metrics": asdict(metrics) if metrics is not None else None,
+                "rtf": rtf,
+            }
             atomic_write_text(
                 candidate_dir / "evaluation.json",
                 json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
@@ -293,9 +334,9 @@ def report(
 ) -> None:
     """Aggregate evaluated runs and write forecasts and recommendations."""
     try:
-        root, dataset_manifest, _reference = _load_dataset(dataset)
+        root, dataset_manifest, _reference, _vocabulary_path = _load_dataset(dataset)
         _audio_path(dataset_manifest)
-        metrics_path, report_path = write_report(root, _evaluated_runs(root))
+        metrics_path, report_path = write_report(root, _evaluated_runs(root, dataset_manifest))
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc

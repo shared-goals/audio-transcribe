@@ -120,6 +120,7 @@ def prepare_reference(audio: Path, current_note: Path, dataset: Path) -> tuple[P
         "current_note_path": str(expanded_note),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "reference_status": "draft",
+        "vocabulary_status": "draft",
     }
     atomic_write_text(draft_path, draft)
     atomic_write_text(vocabulary_path, "")

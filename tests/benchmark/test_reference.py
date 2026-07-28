@@ -84,6 +84,8 @@ def test_prepare_reference_creates_private_draft_without_modifying_note(tmp_path
     assert manifest["audio_sha256"] == hashlib.sha256(audio.read_bytes()).hexdigest()
     assert manifest["current_note_path"] == str(current_note.resolve())
     assert manifest["reference_status"] == "draft"
+    assert manifest["vocabulary_status"] == "draft"
+    assert "vocabulary_sha256" not in manifest
     assert manifest["created_at"].endswith("+00:00")
 
 

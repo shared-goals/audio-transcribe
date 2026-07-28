@@ -84,6 +84,7 @@ class RunManifest:
     peak_rss_mb: float
     status: str
     error: str | None
+    vocabulary_sha256: str | None = None
 
 
 @dataclass(frozen=True)
