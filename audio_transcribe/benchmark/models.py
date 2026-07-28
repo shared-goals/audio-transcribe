@@ -21,3 +21,22 @@ class ReferenceDocument:
 
     source_sha256: str
     spans: tuple[ReferenceSpan, ...]
+
+
+@dataclass(frozen=True)
+class AsrMetrics:
+    """Immutable quality measurements for one candidate ASR transcript."""
+
+    wer: float
+    cer: float
+    substitutions: int
+    deletions: int
+    insertions: int
+    reference_words: int
+    hypothesis_words: int
+    term_hits: int
+    term_total: int
+    term_recall: float
+    hallucinated_phrases: tuple[str, ...]
+    missed_phrases: tuple[str, ...]
+    boundary_errors: int

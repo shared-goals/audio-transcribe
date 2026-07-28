@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. Format foll
 
 ### Added
 - Private reference dataset preparation for reproducible ASR benchmarks
+- WER, CER, terminology, missed-speech, hallucination, and VAD-boundary metrics
 
 ## [0.5.1] - 2026-07-28
 
