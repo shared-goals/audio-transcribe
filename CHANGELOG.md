@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+### Added
+- Private reference dataset preparation for reproducible ASR benchmarks
+
 ## [0.5.1] - 2026-07-28
 
 ### Fixed
