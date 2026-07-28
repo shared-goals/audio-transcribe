@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file. Format foll
 ### Fixed
 - Preserve mixed reviewed/unclear candidate text and detect partial-overlap hallucinations in ASR benchmarks
 - Normalize underscores as separators and require whole-token terminology matches in ASR benchmarks
+- Keep benchmark-only VAD boundaries out of production transcription checkpoints
 
 ## [0.5.1] - 2026-07-28
 

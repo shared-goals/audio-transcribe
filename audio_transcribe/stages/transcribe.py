@@ -129,6 +129,7 @@ def transcribe_mlx_vad(
     from whisperx.audio import SAMPLE_RATE
     from whisperx.vads.pyannote import Pyannote, load_vad_model
 
+    collect_benchmark_metadata = options is not None
     resolved_options = options or MlxVadOptions()
     mlx_repo = MLX_MODEL_MAP.get(model_size)
     if mlx_repo is None:
@@ -202,10 +203,11 @@ def transcribe_mlx_vad(
         "text": " ".join(seg.get("text", "") for seg in all_segments),
         "language": language,
         "segments": all_segments,
-        "_benchmark_vad_boundaries": tuple(
-            float(boundary) for chunk in chunks for boundary in (chunk["start"], chunk["end"])
-        ),
     }
+    if collect_benchmark_metadata:
+        result["_benchmark_vad_boundaries"] = tuple(
+            float(boundary) for chunk in chunks for boundary in (chunk["start"], chunk["end"])
+        )
 
     n_seg, n_ch = len(all_segments), len(chunks)
     print(f"      {n_seg} segments from {n_ch} VAD chunks in {time.time() - t:.1f}s", file=sys.stderr)

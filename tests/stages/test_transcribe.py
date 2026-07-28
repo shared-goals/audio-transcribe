@@ -422,13 +422,14 @@ def test_transcribe_mlx_vad_defaults_preserve_production_call(tmp_path):
             vad_chunks=[{"start": 0.0, "end": 10.0, "segments": [(0.0, 10.0)]}],
             transcribe_results=[{"text": "test", "language": "ru", "segments": []}],
         )
-        mod.transcribe_mlx_vad(str(dummy_audio), "large-v3", "ru")
+        result, _audio = mod.transcribe_mlx_vad(str(dummy_audio), "large-v3", "ru")
 
     assert mod.MlxVadOptions() == mod.MlxVadOptions(
         chunk_size_s=30,
         condition_on_previous_text=False,
         initial_prompt=None,
     )
+    assert "_benchmark_vad_boundaries" not in result
     mock_mlx.transcribe.assert_called_once_with(
         ANY,
         path_or_hf_repo="mlx-community/whisper-large-v3-mlx",

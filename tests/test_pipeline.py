@@ -102,6 +102,42 @@ def test_pipeline_resumes_transcription_checkpoint(tmp_path):
     transcribe.assert_called_once()
 
 
+def test_pipeline_production_transcribe_checkpoint_has_no_benchmark_metadata(tmp_path):
+    audio = tmp_path / "input.wav"
+    audio.write_bytes(b"source")
+
+    def fake_preprocess(_input, output):
+        assert output is not None
+        Path(output).write_bytes(b"normalized")
+        return output
+
+    transcript = {"segments": [], "text": "hello", "language": "ru"}
+    config = PipelineConfig(
+        audio_file=str(audio),
+        backend="mlx-vad",
+        skip_align=True,
+        skip_diarize=True,
+        suppress_stdout_json=True,
+        resume=True,
+        state_dir=str(tmp_path / "state"),
+    )
+    with (
+        patch("audio_transcribe.preflight.check", return_value=_PREFLIGHT_OK),
+        patch("audio_transcribe.pipeline.preprocess_stage", side_effect=fake_preprocess),
+        patch("audio_transcribe.pipeline.transcribe_stage", return_value=(transcript, object())),
+        patch("audio_transcribe.pipeline.build_output_stage", return_value=_STAGE_PATCHES["build_output_stage"]),
+        patch("audio_transcribe.pipeline.load_corrections", return_value=_STAGE_PATCHES["load_corrections"]),
+    ):
+        Pipeline(MagicMock()).run(config)
+
+    import json
+
+    checkpoint_paths = list((tmp_path / "state").rglob("transcribe.json"))
+    assert len(checkpoint_paths) == 1
+    checkpoint = json.loads(checkpoint_paths[0].read_text(encoding="utf-8"))
+    assert "_benchmark_vad_boundaries" not in checkpoint
+
+
 def test_pipeline_emits_events():
     """Pipeline should emit start/complete events for each stage."""
     events: list[tuple[str, object]] = []
