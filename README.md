@@ -135,7 +135,7 @@ audio-transcribe benchmark report --dataset private-benchmark
 audio-transcribe benchmark run-asr --dataset private-benchmark --candidate winner-context
 ```
 
-The four candidates are the generic baseline, the baseline with reviewed `vocabulary.txt` passed as Whisper's `initial_prompt`, the explicitly configured Russian model, and the initial winner retested with previous-text context. Runs and evaluations remain bound to the accepted audio, reference, and vocabulary checksums; runtime forecasts use the probed source-audio duration shared by every candidate. These commands do not change the production model or backend defaults.
+The four candidates are the generic baseline, the baseline with reviewed `vocabulary.txt` passed as Whisper's `initial_prompt`, the explicitly configured Russian model, and the initial winner retested with previous-text context. Runs, evaluations, and the ranking consumed by `winner-context` remain bound to the accepted audio, reference, and vocabulary checksums; runtime forecasts use the probed source-audio duration shared by every candidate. Legacy private runs without `vocabulary_sha256` are deliberately rejected: accept and checksum the vocabulary, then rerun the candidate and evaluation instead of migrating unbound evidence silently. These commands do not change the production model or backend defaults.
 
 ### Profiles, resume, and templates
 

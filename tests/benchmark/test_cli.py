@@ -151,6 +151,38 @@ def test_run_asr_rejects_edited_accepted_vocabulary_before_model_execution(tmp_p
     assert "vocabulary checksum mismatch" in result.output
 
 
+def test_winner_context_rejects_ranking_from_previous_accepted_evidence(tmp_path: Path) -> None:
+    dataset, _audio = _accepted_dataset(tmp_path)
+    stale_manifest = asdict(
+        _manifest(
+            dataset,
+            reference_sha256="previous-reference",
+            vocabulary_sha256="previous-vocabulary",
+        )
+    )
+    (dataset / "metrics.json").write_text(
+        json.dumps(
+            {
+                "ranking": {"default_winner": "baseline"},
+                "results": [{"candidate": "baseline", "manifest": stale_manifest}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with patch(
+        "audio_transcribe.benchmark.cli.run_asr_candidate",
+        side_effect=AssertionError("model must not run"),
+    ):
+        result = runner.invoke(
+            app,
+            ["benchmark", "run-asr", "--dataset", str(dataset), "--candidate", "winner-context"],
+        )
+
+    assert result.exit_code == 1
+    assert "winner-context evidence checksum mismatch" in result.output
+
+
 def test_report_rejects_stale_run_manifest_checksums(tmp_path: Path) -> None:
     dataset, _audio = _accepted_dataset(tmp_path)
     run_dir = dataset / "runs" / "baseline"

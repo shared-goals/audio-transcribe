@@ -102,6 +102,31 @@ def _candidate_definition(
         winner_name = ranking.get("default_winner") if isinstance(ranking, dict) else None
         if not isinstance(winner_name, str) or winner_name not in {"baseline", "vocabulary", "russian"}:
             raise ValueError("winner-context requires an initial ASR winner")
+        results = metrics.get("results") if isinstance(metrics, dict) else None
+        if not isinstance(results, list) or not results:
+            raise ValueError("winner-context requires checksum-bound ranking evidence")
+        expected = (
+            manifest["audio_sha256"],
+            manifest["reference_sha256"],
+            manifest["vocabulary_sha256"],
+        )
+        result_candidates: set[str] = set()
+        for result in results:
+            result_manifest = result.get("manifest") if isinstance(result, dict) else None
+            if not isinstance(result_manifest, dict):
+                raise ValueError("winner-context requires checksum-bound ranking evidence")
+            result_checksums = (
+                result_manifest.get("source_sha256"),
+                result_manifest.get("reference_sha256"),
+                result_manifest.get("vocabulary_sha256"),
+            )
+            if result_checksums != expected:
+                raise ValueError("winner-context evidence checksum mismatch")
+            result_candidate = result.get("candidate")
+            if isinstance(result_candidate, str):
+                result_candidates.add(result_candidate)
+        if winner_name not in result_candidates:
+            raise ValueError("winner-context winner is missing checksum-bound evidence")
         selected_name = winner_name
         condition_on_previous_text = True
     model_key = "russian" if selected_name == "russian" else "baseline"

@@ -75,6 +75,7 @@ class RunManifest:
     candidate_name: str
     source_sha256: str
     reference_sha256: str
+    vocabulary_sha256: str
     git_commit: str
     model: str
     model_revision: str | None
@@ -84,7 +85,6 @@ class RunManifest:
     peak_rss_mb: float
     status: str
     error: str | None
-    vocabulary_sha256: str | None = None
 
 
 @dataclass(frozen=True)

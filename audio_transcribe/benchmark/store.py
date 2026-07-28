@@ -20,7 +20,7 @@ def write_run(dataset: Path, manifest: RunManifest, result: dict[str, Any]) -> t
         not isinstance(benchmark, dict)
         or manifest.source_sha256 != benchmark.get("audio_sha256")
         or manifest.reference_sha256 != benchmark.get("reference_sha256")
-        or (manifest.vocabulary_sha256 is not None and manifest.vocabulary_sha256 != benchmark.get("vocabulary_sha256"))
+        or manifest.vocabulary_sha256 != benchmark.get("vocabulary_sha256")
     ):
         raise ValueError("benchmark checksum mismatch")
 

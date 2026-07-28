@@ -27,6 +27,7 @@ def _manifest(**overrides: object) -> RunManifest:
         "peak_rss_mb": 512.0,
         "status": "completed",
         "error": None,
+        "vocabulary_sha256": "vocabulary-sha",
     }
     values.update(overrides)
     return RunManifest(**values)  # type: ignore[arg-type]
@@ -36,7 +37,13 @@ def _dataset(tmp_path: Path) -> Path:
     dataset = tmp_path / "benchmark"
     dataset.mkdir()
     (dataset / "benchmark.json").write_text(
-        json.dumps({"audio_sha256": "audio-sha", "reference_sha256": "reference-sha"}),
+        json.dumps(
+            {
+                "audio_sha256": "audio-sha",
+                "reference_sha256": "reference-sha",
+                "vocabulary_sha256": "vocabulary-sha",
+            }
+        ),
         encoding="utf-8",
     )
     return dataset
@@ -55,6 +62,16 @@ def test_write_run_rejects_checksum_mismatch(tmp_path: Path, overrides: dict[str
 
     with pytest.raises(ValueError, match="^benchmark checksum mismatch$"):
         write_run(dataset, _manifest(**overrides), {"segments": []})
+
+    assert not (dataset / "runs").exists()
+
+
+def test_write_run_rejects_manifest_without_vocabulary_binding(tmp_path: Path) -> None:
+    """Legacy unbound manifests must fail migration instead of being silently accepted."""
+    dataset = _dataset(tmp_path)
+
+    with pytest.raises(ValueError, match="^benchmark checksum mismatch$"):
+        write_run(dataset, _manifest(vocabulary_sha256=None), {"segments": []})
 
     assert not (dataset / "runs").exists()
 
