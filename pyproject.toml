@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "audio-transcribe"
-version = "0.5.0"
+version = "0.5.1"
 description = "Local audio transcription pipeline for structured meeting notes"
 readme = "README.md"
 license = "MIT"
@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 mlx = [
+    "av>=15.1.0,<16",
     "mlx-whisper>=0.4.3,<0.5",
     "numba>=0.66.0",
     # mlx currently reuses WhisperX audio loading and alignment.
@@ -27,18 +28,21 @@ mlx = [
     "whisperx>=3.8.6,<3.9",
 ]
 whisperx = [
+    "av>=15.1.0,<16",
     "torch>=2.8.0,<2.9",
     "torchaudio>=2.8.0,<2.9",
     "torchcodec>=0.7.0,<0.8",
     "whisperx>=3.8.6,<3.9",
 ]
 diarization = [
+    "av>=15.1.0,<16",
     "torch>=2.8.0,<2.9",
     "torchaudio>=2.8.0,<2.9",
     "torchcodec>=0.7.0,<0.8",
     "whisperx>=3.8.6,<3.9",
 ]
 ml = [
+    "av>=15.1.0,<16",
     "mlx-whisper>=0.4.3,<0.5",
     "numba>=0.66.0",
     "torch>=2.8.0,<2.9",
