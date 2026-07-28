@@ -13,7 +13,7 @@ dependencies = [
     "numpy>=2.1.0,<2.5",
     "pyyaml>=6.0.3,<7",
     "rich>=15.0.0,<16",
-    "typer>=0.26.8,<0.27",
+    "typer>=0.27.0,<0.28",
 ]
 
 [project.optional-dependencies]
