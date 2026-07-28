@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-28
+
+### Fixed
+- Build PyAV 15 against Homebrew FFmpeg 7 on macOS and patch TorchCodec RPATHs with ad-hoc signing so diarization loads both libraries through one compatible FFmpeg ABI
+- Use the current MLX cache-limit API without emitting a deprecation warning
+
 ## [0.5.0] - 2026-07-13
 
 ### Added

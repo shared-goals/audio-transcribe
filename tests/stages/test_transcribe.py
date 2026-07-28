@@ -340,6 +340,13 @@ def test_transcribe_mlx_vad_offsets_timestamps(tmp_path):
             transcribe_results=[chunk_result],
         )
         result, _audio = mod.transcribe_mlx_vad(str(dummy_audio), "large-v3", "ru")
+        sys.modules["whisperx.vads.pyannote"].Pyannote.merge_chunks.assert_called_once_with(
+            sys.modules["whisperx.vads.pyannote"].load_vad_model.return_value.return_value,
+            chunk_size=30,
+            onset=0.5,
+            offset=0.363,
+        )
+        assert mock_mlx.transcribe.call_args.kwargs["condition_on_previous_text"] is False
 
     assert len(result["segments"]) == 2
     assert result["segments"][0]["start"] == 10.0
@@ -414,7 +421,7 @@ def test_transcribe_mlx_vad_clears_mlx_cache(tmp_path):
 
         assert mock_model_holder.model is None
         assert mock_model_holder.model_path is None
-        mock_mx.metal.set_cache_limit.assert_called_once_with(100_000_000)
+        mock_mx.set_cache_limit.assert_called_once_with(100_000_000)
         mock_mx.clear_cache.assert_called_once()
 
 

@@ -23,7 +23,7 @@ def test_cli_help():
 def test_cli_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.output.strip() == "0.5.0"
+    assert result.output.strip() == "0.5.1"
 
 
 def test_process_help():

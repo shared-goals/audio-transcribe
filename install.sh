@@ -3,7 +3,7 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/shared-goals/audio-transcribe/main/install.sh | zsh
 #
 # Environment variables:
-#   AUDIO_TRANSCRIBE_VERSION  Install a specific release (default: 0.5.0)
+#   AUDIO_TRANSCRIBE_VERSION  Install a specific release (default: 0.5.1)
 #   FORCE=1                   Force reinstall even if already installed
 #   QUIET=1                   Suppress informational messages
 #
@@ -58,6 +58,11 @@ else
     ok "ffmpeg installed"
 fi
 
+info "Checking coherent FFmpeg 7 ML runtime..."
+brew install ffmpeg@7 pkgconf
+FFMPEG7_PREFIX="$(brew --prefix ffmpeg@7)"
+ok "ffmpeg@7 and pkgconf found"
+
 # --- 3. uv ---
 info "Checking uv..."
 if command -v uv &>/dev/null; then
@@ -71,7 +76,7 @@ fi
 
 # --- 4. Install audio-transcribe ---
 FORCE="${FORCE:-}"
-VERSION="${AUDIO_TRANSCRIBE_VERSION:-0.5.0}"
+VERSION="${AUDIO_TRANSCRIBE_VERSION:-0.5.1}"
 INSTALL_SPEC="audio-transcribe[ml] @ git+${REPO_URL}@v${VERSION}"
 
 _should_install=1
@@ -85,7 +90,14 @@ fi
 
 if (( _should_install )); then
     info "Installing audio-transcribe${VERSION:+ v$VERSION}..."
-    uv tool install --python 3.12 --force "$INSTALL_SPEC"
+    env \
+        UV_NO_BINARY_PACKAGE=av \
+        PKG_CONFIG_PATH="$FFMPEG7_PREFIX/lib/pkgconfig" \
+        CPPFLAGS="-I$FFMPEG7_PREFIX/include" \
+        LDFLAGS="-L$FFMPEG7_PREFIX/lib" \
+        uv tool install --python 3.12 --force "$INSTALL_SPEC"
+    TOOL_ROOT="$(uv tool dir)/audio-transcribe"
+    "$TOOL_ROOT/bin/python" -m audio_transcribe.macos_ffmpeg "$FFMPEG7_PREFIX"
     ok "audio-transcribe installed"
 fi
 

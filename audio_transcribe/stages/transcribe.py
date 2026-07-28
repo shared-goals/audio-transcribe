@@ -141,7 +141,8 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
     vad_pipeline: Any = load_vad_model(device="cpu")
     vad_result: Any = vad_pipeline({"waveform": waveform, "sample_rate": SAMPLE_RATE})
 
-    # Merge speech regions into <=30s chunks
+    # Keep chunks short: 60-second chunks caused merged speech and hallucinated
+    # text in quiet tails during the 2026-07-28 quality benchmark.
     chunks: list[dict[str, Any]] = Pyannote.merge_chunks(vad_result, chunk_size=30, onset=0.5, offset=0.363)
 
     # Free VAD model before mlx-whisper decoder loads
@@ -151,7 +152,7 @@ def transcribe_mlx_vad(audio_path: str, model_size: str, language: str) -> tuple
     # Cap Metal buffer cache to prevent unbounded growth across chunks
     import mlx.core as mx
 
-    mx.metal.set_cache_limit(100_000_000)  # 100 MB
+    mx.set_cache_limit(100_000_000)  # 100 MB
 
     # Transcribe each chunk independently with mlx-whisper
     all_segments: list[dict[str, Any]] = []
