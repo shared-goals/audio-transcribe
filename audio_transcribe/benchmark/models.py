@@ -65,3 +65,49 @@ class AsrRunResult:
     vad_boundaries: tuple[float, ...]
     status: str
     error: str | None
+
+
+@dataclass(frozen=True)
+class RunManifest:
+    """Reproducibility, environment, timing, and status evidence for one benchmark run."""
+
+    candidate_name: str
+    source_sha256: str
+    reference_sha256: str
+    git_commit: str
+    model: str
+    model_revision: str | None
+    options: dict[str, Any]
+    hardware: dict[str, str]
+    stage_times_s: dict[str, float]
+    peak_rss_mb: float
+    status: str
+    error: str | None
+
+
+@dataclass(frozen=True)
+class EvaluatedAsrRun:
+    """One persisted run paired with optional ASR metrics and real-time factor."""
+
+    manifest: RunManifest
+    metrics: AsrMetrics | None
+    rtf: float | None
+
+
+@dataclass(frozen=True)
+class Forecast:
+    """Linear runtime forecast with a symmetric planning range."""
+
+    duration_minutes: int
+    seconds: float
+    low_seconds: float
+    high_seconds: float
+
+
+@dataclass(frozen=True)
+class Ranking:
+    """Default and optional quality-profile recommendation with auditable reasons."""
+
+    default_winner: str
+    quality_profile: str | None
+    reasons: tuple[str, ...]
