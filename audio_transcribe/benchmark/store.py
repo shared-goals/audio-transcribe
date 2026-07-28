@@ -7,7 +7,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from audio_transcribe.benchmark.models import RunManifest
+from audio_transcribe.benchmark.models import RunManifest, validate_run_manifest
 from audio_transcribe.util import atomic_write_text
 
 
@@ -27,9 +27,12 @@ def write_run(dataset: Path, manifest: RunManifest, result: dict[str, Any]) -> t
     if candidate_path.name != manifest.candidate_name or manifest.candidate_name in {"", ".", ".."}:
         raise ValueError("invalid benchmark candidate name")
 
+    validate_run_manifest(manifest)
+    manifest_content = json.dumps(asdict(manifest), ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+    result_content = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
     run_dir = expanded_dataset / "runs" / manifest.candidate_name
     manifest_path = run_dir / "manifest.json"
     result_path = run_dir / "result.json"
-    atomic_write_text(manifest_path, json.dumps(asdict(manifest), ensure_ascii=False, indent=2) + "\n")
-    atomic_write_text(result_path, json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    atomic_write_text(manifest_path, manifest_content)
+    atomic_write_text(result_path, result_content)
     return manifest_path, result_path

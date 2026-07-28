@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -218,3 +219,147 @@ def test_write_report_preserves_failures_and_required_comparison_fields(tmp_path
     assert "Default winner: **candidate**" in report
     assert "failed: model unavailable" in report
     assert "±15%" in report
+
+
+@pytest.mark.parametrize("rtf", (0.0, -0.1, float("nan"), float("inf"), float("-inf")))
+def test_forecast_rejects_non_finite_or_non_positive_rtf(rtf: float) -> None:
+    """Forecasts must never emit invalid, zero, or non-finite processing times."""
+    with pytest.raises(ValueError, match="real-time factor must be finite and positive"):
+        forecast(rtf, 120)
+
+
+def test_forecast_rejects_finite_rtf_that_overflows_duration() -> None:
+    """A finite input must still be rejected if the projected seconds overflow."""
+    with pytest.raises(ValueError, match="forecast seconds must be finite"):
+        forecast(1e308, 120)
+
+
+@pytest.mark.parametrize(
+    "results",
+    (
+        (
+            _run("baseline", total=100.0, wer=0.3),
+            replace(
+                _run("baseline", total=90.0, wer=0.2),
+                manifest=replace(
+                    _run("baseline", total=90.0, wer=0.2).manifest,
+                    error="also invalid",
+                ),
+            ),
+        ),
+        (
+            _run("baseline", total=100.0, wer=0.3),
+            _run("candidate", total=90.0, wer=0.2),
+            _run("candidate", total=80.0, wer=0.1),
+        ),
+    ),
+)
+def test_rank_rejects_duplicate_candidate_names(results: tuple[EvaluatedAsrRun, ...]) -> None:
+    """Duplicate names, including duplicate baselines, must fail before ranking state is keyed by name."""
+    with pytest.raises(ValueError, match="duplicate benchmark candidate name"):
+        rank_asr(results, "baseline")
+
+
+@pytest.mark.parametrize(
+    "run",
+    (
+        replace(
+            _run("baseline", total=100.0, wer=0.3),
+            manifest=replace(
+                _run("baseline", total=100.0, wer=0.3).manifest,
+                error="completed with an error",
+            ),
+        ),
+        replace(_run("baseline", total=100.0, wer=0.3), metrics=None),
+        replace(_run("baseline", total=100.0, wer=0.3), rtf=None),
+        replace(
+            _failed_run("baseline"),
+            manifest=replace(_failed_run("baseline").manifest, error=None),
+        ),
+        replace(_failed_run("baseline"), metrics=_metrics(wer=0.1)),
+        replace(_failed_run("baseline"), rtf=0.5),
+    ),
+)
+def test_rank_rejects_inconsistent_status_error_metrics_and_rtf(run: EvaluatedAsrRun) -> None:
+    """Malformed completed and failed states must be rejected rather than ranked or silently ignored."""
+    with pytest.raises(ValueError, match="invalid benchmark run"):
+        rank_asr((run,), "baseline")
+
+
+@pytest.mark.parametrize(
+    "run",
+    (
+        replace(_run("baseline", total=100.0, wer=0.3), rtf=0.0),
+        replace(_run("baseline", total=100.0, wer=0.3), rtf=float("nan")),
+        replace(
+            _run("baseline", total=100.0, wer=0.3),
+            manifest=replace(
+                _run("baseline", total=100.0, wer=0.3).manifest,
+                stage_times_s={"transcribe": float("inf")},
+            ),
+        ),
+        replace(
+            _run("baseline", total=100.0, wer=0.3),
+            manifest=replace(
+                _run("baseline", total=100.0, wer=0.3).manifest,
+                stage_times_s={"transcribe": -1.0, "align": 101.0},
+            ),
+        ),
+    ),
+)
+def test_rank_rejects_invalid_rtf_or_runtime(run: EvaluatedAsrRun) -> None:
+    """Ranking requires finite positive RTF and finite non-negative stages with positive total runtime."""
+    with pytest.raises(ValueError, match="invalid benchmark run"):
+        rank_asr((run,), "baseline")
+
+
+@pytest.mark.parametrize(
+    "metrics",
+    (
+        replace(_metrics(wer=0.3), wer=float("nan")),
+        replace(_metrics(wer=0.3), wer=-0.1),
+        replace(_metrics(wer=0.3), cer=float("inf")),
+        replace(_metrics(wer=0.3), cer=-0.1),
+        replace(_metrics(wer=0.3), term_recall=float("nan")),
+        replace(_metrics(wer=0.3), term_recall=-0.1),
+        replace(_metrics(wer=0.3), term_recall=1.1),
+        replace(_metrics(wer=0.3), deletions=-1),
+        replace(_metrics(wer=0.3), term_hits=6),
+    ),
+)
+def test_rank_rejects_invalid_quality_values(metrics: AsrMetrics) -> None:
+    """Error rates must be finite/non-negative, recall bounded, and metric counts internally valid."""
+    run = replace(_run("baseline", total=100.0, wer=0.3), metrics=metrics)
+
+    with pytest.raises(ValueError, match="invalid ASR metrics"):
+        rank_asr((run,), "baseline")
+
+
+def test_write_report_rejects_nested_non_finite_json_before_writing(tmp_path: Path) -> None:
+    """Strict JSON serialization must reject hidden non-finite option values before creating either report."""
+    baseline = _run("baseline", total=100.0, wer=0.3)
+    baseline = replace(
+        baseline,
+        manifest=replace(baseline.manifest, options={"temperature": float("nan")}),
+    )
+
+    with pytest.raises(ValueError, match="Out of range float values"):
+        write_report(tmp_path, (baseline,))
+
+    assert not (tmp_path / "metrics.json").exists()
+    assert not (tmp_path / "report.md").exists()
+
+
+def test_write_report_escapes_pipes_and_normalizes_newlines_in_cells(tmp_path: Path) -> None:
+    """Candidate and error cells must stay within one Markdown row even with adversarial text."""
+    failed = _failed_run("failed|candidate")
+    failed = replace(
+        failed,
+        manifest=replace(failed.manifest, error="bad | model\r\ntry again\nlater"),
+    )
+
+    _, report_path = write_report(tmp_path, (_run("baseline", total=100.0, wer=0.3), failed))
+
+    report_lines = report_path.read_text(encoding="utf-8").splitlines()
+    failed_row = next(line for line in report_lines if "failed\\|candidate" in line)
+    assert "failed: bad \\| model<br>try again<br>later" in failed_row

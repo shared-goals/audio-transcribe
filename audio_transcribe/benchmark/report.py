@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
-from audio_transcribe.benchmark.models import EvaluatedAsrRun, Forecast, Ranking
+from audio_transcribe.benchmark.models import (
+    EvaluatedAsrRun,
+    Forecast,
+    Ranking,
+    validate_evaluated_asr_run,
+)
 from audio_transcribe.util import atomic_write_text
 
 _FORECAST_DURATIONS = (30, 60, 120)
@@ -17,16 +23,20 @@ _DEFAULT_RUNTIME_LIMIT = 2.0
 
 def forecast(rtf: float, duration_minutes: int) -> Forecast:
     """Forecast processing time from a measured real-time factor."""
-    if rtf < 0.0:
-        raise ValueError("real-time factor must not be negative")
+    if not isfinite(rtf) or rtf <= 0.0:
+        raise ValueError("real-time factor must be finite and positive")
     if duration_minutes <= 0:
         raise ValueError("forecast duration must be positive")
     seconds = rtf * duration_minutes * 60
+    low_seconds = seconds * (1.0 - _PLANNING_RANGE)
+    high_seconds = seconds * (1.0 + _PLANNING_RANGE)
+    if not all(isfinite(value) for value in (seconds, low_seconds, high_seconds)):
+        raise ValueError("forecast seconds must be finite")
     return Forecast(
         duration_minutes=duration_minutes,
         seconds=seconds,
-        low_seconds=seconds * (1.0 - _PLANNING_RANGE),
-        high_seconds=seconds * (1.0 + _PLANNING_RANGE),
+        low_seconds=low_seconds,
+        high_seconds=high_seconds,
     )
 
 
@@ -48,6 +58,12 @@ def _safety_eligible(run: EvaluatedAsrRun, baseline: EvaluatedAsrRun) -> bool:
 
 def rank_asr(results: tuple[EvaluatedAsrRun, ...], baseline_name: str) -> Ranking:
     """Rank successful ASR runs while enforcing safety and the two-times default gate."""
+    candidate_names = tuple(run.manifest.candidate_name for run in results)
+    if len(candidate_names) != len(set(candidate_names)):
+        raise ValueError("duplicate benchmark candidate name")
+    for run in results:
+        validate_evaluated_asr_run(run)
+
     baseline = next(
         (run for run in results if run.manifest.candidate_name == baseline_name and _successful(run)),
         None,
@@ -142,6 +158,10 @@ def _format_forecast(value: Forecast | None) -> str:
     return f"{value.seconds:.1f} s ({value.low_seconds:.1f}–{value.high_seconds:.1f})"
 
 
+def _markdown_cell(value: str) -> str:
+    return value.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>").replace("|", "\\|")
+
+
 def _report_row(run: EvaluatedAsrRun, baseline_total: float) -> str:
     metrics = run.metrics
     successful = _successful(run)
@@ -173,7 +193,7 @@ def _report_row(run: EvaluatedAsrRun, baseline_total: float) -> str:
         _format_number(run.manifest.peak_rss_mb, " MB"),
         status,
     )
-    return "| " + " | ".join(values) + " |"
+    return "| " + " | ".join(_markdown_cell(value) for value in values) + " |"
 
 
 def _markdown_report(
@@ -225,6 +245,8 @@ def write_report(dataset: Path, results: tuple[EvaluatedAsrRun, ...]) -> tuple[P
     expanded_dataset = dataset.expanduser().resolve()
     metrics_path = expanded_dataset / "metrics.json"
     report_path = expanded_dataset / "report.md"
-    atomic_write_text(metrics_path, json.dumps(aggregate, ensure_ascii=False, indent=2) + "\n")
-    atomic_write_text(report_path, _markdown_report(results, baseline_total, ranking))
+    metrics_content = json.dumps(aggregate, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+    report_content = _markdown_report(results, baseline_total, ranking)
+    atomic_write_text(metrics_path, metrics_content)
+    atomic_write_text(report_path, report_content)
     return metrics_path, report_path

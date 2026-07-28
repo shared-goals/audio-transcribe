@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file. Format foll
 - Checksum-bound benchmark manifests, quality ranking, and two-hour runtime forecasts
 
 ### Fixed
+- Reject duplicate, inconsistent, or non-finite ASR benchmark runs before writing strict JSON and Markdown reports
 - Preserve mixed reviewed/unclear candidate text and detect partial-overlap hallucinations in ASR benchmarks
 - Normalize underscores as separators and require whole-token terminology matches in ASR benchmarks
 - Keep benchmark-only VAD boundaries out of production transcription checkpoints

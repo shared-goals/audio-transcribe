@@ -73,3 +73,38 @@ def test_write_run_persists_manifest_and_result_atomically(tmp_path: Path) -> No
     assert json.loads(manifest_path.read_text(encoding="utf-8"))["git_commit"] == "abc123"
     assert json.loads(result_path.read_text(encoding="utf-8")) == result
     assert [call.args[0] for call in atomic_write.call_args_list] == [manifest_path, result_path]
+
+
+def test_write_run_serializes_both_payloads_before_first_write(tmp_path: Path) -> None:
+    """An invalid result must not leave behind an otherwise valid manifest-only run."""
+    dataset = _dataset(tmp_path)
+
+    with (
+        patch("audio_transcribe.benchmark.store.atomic_write_text") as atomic_write,
+        pytest.raises(ValueError, match="Out of range float values"),
+    ):
+        write_run(dataset, _manifest(), {"score": float("nan")})
+
+    atomic_write.assert_not_called()
+    assert not (dataset / "runs").exists()
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    (
+        _manifest(status="completed", error="unexpected error"),
+        _manifest(status="failed", error=None),
+        _manifest(status="unknown", error=None),
+        _manifest(stage_times_s={"transcribe": float("inf")}),
+        _manifest(stage_times_s={"transcribe": 1e308, "align": 1e308}),
+        _manifest(peak_rss_mb=float("nan")),
+    ),
+)
+def test_write_run_rejects_invalid_manifest_invariants(tmp_path: Path, manifest: RunManifest) -> None:
+    """Persisted manifests must have coherent status, error, timing, and memory evidence."""
+    dataset = _dataset(tmp_path)
+
+    with pytest.raises(ValueError, match="invalid benchmark run"):
+        write_run(dataset, manifest, {"segments": []})
+
+    assert not (dataset / "runs").exists()
