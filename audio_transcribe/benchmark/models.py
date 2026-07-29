@@ -28,6 +28,24 @@ class ReferenceDocument:
 
 
 @dataclass(frozen=True)
+class SpeakerTurn:
+    """One verified speaker interval in a diarization reference."""
+
+    start_s: float
+    end_s: float
+    speaker: str
+
+
+@dataclass(frozen=True)
+class SpeakerReference:
+    """Verified two-speaker turns bound to source audio and aligned ASR."""
+
+    source_sha256: str
+    aligned_asr_sha256: str
+    turns: tuple[SpeakerTurn, ...]
+
+
+@dataclass(frozen=True)
 class AsrMetrics:
     """Immutable quality measurements for one candidate ASR transcript."""
 

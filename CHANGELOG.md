@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file. Format foll
 ## [Unreleased]
 
 ### Added
+- Private two-speaker reference format for diarization benchmarks
 - Private reference dataset preparation for reproducible ASR benchmarks
 - WER, CER, terminology, missed-speech, hallucination, and VAD-boundary metrics
 - Isolated MLX-VAD benchmark candidates with vocabulary and context controls
