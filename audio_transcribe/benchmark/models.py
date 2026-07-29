@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
-from typing import Any
+from typing import Any, Literal
 
 from audio_transcribe.stages.transcribe import MlxVadOptions
 
@@ -120,6 +120,7 @@ class AsrRunResult:
     vad_boundaries: tuple[float, ...]
     status: str
     error: str | None
+    failure_kind: Literal["missing_optional_dependency"] | None = None
 
 
 @dataclass(frozen=True)

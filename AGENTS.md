@@ -117,7 +117,7 @@ Remaining:
 - **Phase 5**: File watcher, template system
 - **Phase 6**: Optional provider-neutral LLM post-processing integration
 
-Vault location is configured outside the repository (for example, via `$KNOWLEDGE_VAULT`). Project spec is under `$KNOWLEDGE_VAULT/projects/personal/audio-transcribe/`.
+Vault lives outside the repository at `$KNOWLEDGE_VAULT`. Project spec is under `$KNOWLEDGE_VAULT/projects/personal/audio-transcribe/`.
 
 **Always update the Obsidian vault** when making progress — update the roadmap, project page, and task files at `knowledge/projects/personal/audio-transcribe/`.
 

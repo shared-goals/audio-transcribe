@@ -69,6 +69,18 @@ def run_asr_candidate(audio: Path, candidate: AsrCandidate, align_model: str | N
             status="completed",
             error=None,
         )
+    except ModuleNotFoundError as exc:
+        dependency = exc.name or "unknown"
+        return AsrRunResult(
+            candidate=candidate,
+            result=None,
+            stage_times_s=stage_times_s,
+            peak_rss_mb=_peak_rss_mb(),
+            vad_boundaries=vad_boundaries,
+            status="failed",
+            error=f"Missing optional ML dependency '{dependency}'. Run `uv sync --extra ml`.",
+            failure_kind="missing_optional_dependency",
+        )
     except Exception as exc:
         return AsrRunResult(
             candidate=candidate,

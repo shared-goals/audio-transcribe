@@ -493,6 +493,8 @@ def run_asr(
         raise typer.Exit(1) from exc
     if result.status == "failed":
         typer.echo(f"{candidate}: failed: {result.error}", err=True)
+        if result.failure_kind == "missing_optional_dependency":
+            raise typer.Exit(1)
         return
     typer.echo(f"{candidate}: completed")
 

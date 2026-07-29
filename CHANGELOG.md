@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file. Format foll
 - Private ASR benchmark CLI for reference preparation, candidate runs, evaluation, and reports
 
 ### Fixed
+- Preserve actionable failed-run evidence and return exit 1 when an ASR benchmark discovers a missing optional ML package during execution
 - Keep optional torch/pyannote benchmark runners lazy so core CLI and help work without the `ml` extra
 - Bind machine and Markdown benchmark reports to one validated generation with rollback-safe publication
 - Report the combined sequential pipeline peak as the maximum of ASR and diarization component peaks

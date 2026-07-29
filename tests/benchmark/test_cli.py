@@ -835,6 +835,33 @@ def test_run_asr_persists_model_failure_when_invoked_outside_repository(tmp_path
     assert persisted["git_commit"] == "unavailable"
 
 
+def test_run_asr_missing_execution_dependency_persists_failure_and_exits_one(tmp_path: Path) -> None:
+    """A missing ML package discovered during execution is actionable and operationally fatal."""
+    dataset, _audio = _accepted_dataset(tmp_path)
+    missing = ModuleNotFoundError("No module named 'mlx_whisper'", name="mlx_whisper")
+
+    with (
+        patch("audio_transcribe.preflight.check", return_value=PreflightResult()),
+        patch(
+            "audio_transcribe.benchmark.asr_runner.preprocess",
+            side_effect=lambda _source, output: output,
+        ),
+        patch("audio_transcribe.benchmark.asr_runner.transcribe_mlx_vad", side_effect=missing),
+    ):
+        result = runner.invoke(
+            app,
+            ["benchmark", "run-asr", "--dataset", str(dataset), "--candidate", "baseline"],
+        )
+
+    assert result.exit_code == 1
+    assert "uv sync --extra ml" in result.output
+    persisted = json.loads((dataset / "runs" / "baseline" / "manifest.json").read_text(encoding="utf-8"))
+    assert persisted["status"] == "failed"
+    assert "mlx_whisper" in persisted["error"]
+    assert "uv sync --extra ml" in persisted["error"]
+    assert (dataset / "runs" / "baseline" / "result.json").is_file()
+
+
 def test_git_commit_provenance_is_resolved_from_repository_not_caller_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
