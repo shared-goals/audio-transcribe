@@ -117,7 +117,7 @@ Remaining:
 - **Phase 5**: File watcher, template system
 - **Phase 6**: Optional provider-neutral LLM post-processing integration
 
-Vault lives at `/Users/gnezim/_projects/gnezim/knowledge/`. Project spec at `knowledge/projects/personal/audio-transcribe/`.
+Vault location is configured outside the repository (for example, via `$KNOWLEDGE_VAULT`). Project spec is under `$KNOWLEDGE_VAULT/projects/personal/audio-transcribe/`.
 
 **Always update the Obsidian vault** when making progress — update the roadmap, project page, and task files at `knowledge/projects/personal/audio-transcribe/`.
 

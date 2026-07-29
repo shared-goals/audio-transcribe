@@ -4,7 +4,7 @@
 
 Improve the default transcription and diarization quality using one representative Russian meeting while keeping total processing time within twice the current baseline. The benchmark must identify which individual change improves quality, report measured runtime and memory, and forecast processing time for recordings up to two hours.
 
-The pilot recording is `/Users/gnezim/Movies/2026-07-28_17-31-24_busurina-gk-plan-2.mp3`. Its existing Obsidian meeting note is evidence of the current quality problem, but neither that note nor the source audio will be overwritten or committed to the public repository.
+The pilot recording is `$BENCHMARK_AUDIO`. Its existing meeting note at `$BENCHMARK_NOTE` is evidence of the current quality problem, but neither that note nor the source audio will be overwritten or committed to the public repository.
 
 ## Decision Boundary
 
@@ -14,7 +14,7 @@ ASR and diarization are evaluated sequentially. ASR is selected first because ch
 
 ## Private Reference Dataset
 
-The benchmark dataset lives at `knowledge/projects/personal/audio-transcribe/benchmarks/2026-07-28-busurina-gk-plan-2/` in the private Obsidian vault and contains:
+The benchmark dataset lives at `$BENCHMARK_DATASET` outside the repository and contains:
 
 - The original MP3 by reference, without copying it into the repository.
 - `reference-transcript.md`, containing accurate text with time intervals but no speaker labels.

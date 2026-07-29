@@ -292,7 +292,7 @@ Run a preflight load for `pyannote/speaker-diarization-community-1` using the ca
 - [ ] **Step 2: Run all diarization candidates**
 
 ```bash
-dataset_dir="/Users/gnezim/_projects/gnezim/knowledge/projects/personal/audio-transcribe/benchmarks/2026-07-28-busurina-gk-plan-2"
+dataset_dir="$BENCHMARK_DATASET"
 for candidate in pyannote-3.1 community-1 community-1-exclusive; do
   uv run audio-transcribe benchmark run-diarization --dataset "$dataset_dir" --candidate "$candidate"
 done

@@ -10,8 +10,8 @@
 
 ## Global Constraints
 
-- Use `/Users/gnezim/Movies/2026-07-28_17-31-24_busurina-gk-plan-2.mp3` as the only pilot recording.
-- Store private benchmark data under `/Users/gnezim/_projects/gnezim/knowledge/projects/personal/audio-transcribe/benchmarks/2026-07-28-busurina-gk-plan-2/`.
+- Use `$BENCHMARK_AUDIO` as the only pilot recording.
+- Store private benchmark data under `$BENCHMARK_DATASET`, outside the repository.
 - Do not overwrite the existing meeting note or commit real audio, reference text, vocabulary, or run outputs to the public repository.
 - Keep the current 30-second VAD chunks; 60-second variants are excluded.
 - Keep `condition_on_previous_text=False` except for the final retest of the best initial candidate.
@@ -364,9 +364,9 @@ git commit -m "feat: add ASR benchmark CLI"
 ### Task 6: Prepare and Approve the Pilot Reference
 
 **Files:**
-- Create privately: `knowledge/projects/personal/audio-transcribe/benchmarks/2026-07-28-busurina-gk-plan-2/reference-transcript.draft.md`
-- Create privately: `knowledge/projects/personal/audio-transcribe/benchmarks/2026-07-28-busurina-gk-plan-2/reference-transcript.md`
-- Create privately: `knowledge/projects/personal/audio-transcribe/benchmarks/2026-07-28-busurina-gk-plan-2/vocabulary.txt`
+- Create privately: `$BENCHMARK_DATASET/reference-transcript.draft.md`
+- Create privately: `$BENCHMARK_DATASET/reference-transcript.md`
+- Create privately: `$BENCHMARK_DATASET/vocabulary.txt`
 - Modify privately: `knowledge/projects/personal/audio-transcribe/tasks/benchmark-asr-diarization-alternatives.md`
 
 **Interfaces:**
@@ -378,9 +378,9 @@ Run:
 
 ```bash
 uv run audio-transcribe benchmark prepare \
-  /Users/gnezim/Movies/2026-07-28_17-31-24_busurina-gk-plan-2.mp3 \
-  --current-note /Users/gnezim/_projects/gnezim/knowledge/meetings/2026-07-28_17-31-24_busurina-gk-plan-2.md \
-  --dataset /Users/gnezim/_projects/gnezim/knowledge/projects/personal/audio-transcribe/benchmarks/2026-07-28-busurina-gk-plan-2
+  "$BENCHMARK_AUDIO" \
+  --current-note "$BENCHMARK_NOTE" \
+  --dataset "$BENCHMARK_DATASET"
 ```
 
 Expected: draft files and `benchmark.json` are created without modifying the meeting note.
@@ -404,7 +404,7 @@ Copy the approved content to `reference-transcript.md`, set `reference_status` t
 ### Task 7: Convert the Russian Model and Run the ASR Benchmark
 
 **Files:**
-- Create locally outside Git: `/Users/gnezim/.cache/audio-transcribe/models/whisper-large-v3-russian-mlx/`
+- Create locally outside Git: `$ASR_MODEL_CACHE/whisper-large-v3-russian-mlx/`
 - Create privately: benchmark run directories, `metrics.json`, and `report.md`
 - Modify privately: vault project page, roadmap, and benchmark task
 
@@ -418,7 +418,7 @@ Run:
 
 ```bash
 conversion_dir="$(mktemp -d)"
-model_source="/Users/gnezim/.cache/audio-transcribe/models/whisper-large-v3-russian-hf"
+model_source="$ASR_MODEL_CACHE/whisper-large-v3-russian-hf"
 git clone --filter=blob:none https://github.com/ml-explore/mlx-examples.git "$conversion_dir/mlx-examples"
 git -C "$conversion_dir/mlx-examples" checkout 796f5b53cab69a3d48a44233ce21aae889e94a08
 hf download antony66/whisper-large-v3-russian \
@@ -426,7 +426,7 @@ hf download antony66/whisper-large-v3-russian \
   --local-dir "$model_source"
 uv run python "$conversion_dir/mlx-examples/whisper/convert.py" \
   --torch-name-or-path "$model_source" \
-  --mlx-path /Users/gnezim/.cache/audio-transcribe/models/whisper-large-v3-russian-mlx
+  --mlx-path "$ASR_MODEL_CACHE/whisper-large-v3-russian-mlx"
 ```
 
 Write `conversion-manifest.json` beside the converted model with the two pinned revisions, the SHA-256 of the source `model.safetensors`, the conversion command, and the conversion timestamp.
@@ -440,7 +440,7 @@ Run a 30-second clip through `mlx_whisper.transcribe` with `language="ru"` and `
 Run:
 
 ```bash
-dataset_dir="/Users/gnezim/_projects/gnezim/knowledge/projects/personal/audio-transcribe/benchmarks/2026-07-28-busurina-gk-plan-2"
+dataset_dir="$BENCHMARK_DATASET"
 for candidate in baseline vocabulary russian; do
   uv run audio-transcribe benchmark run-asr --dataset "$dataset_dir" --candidate "$candidate"
 done

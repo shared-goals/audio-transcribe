@@ -16,9 +16,7 @@ import typer
 
 from audio_transcribe import preflight
 from audio_transcribe.benchmark.asr_metrics import evaluate_asr
-from audio_transcribe.benchmark.asr_runner import run_asr_candidate
 from audio_transcribe.benchmark.diarization_metrics import evaluate_diarization
-from audio_transcribe.benchmark.diarization_runner import run_diarization_candidate
 from audio_transcribe.benchmark.models import (
     AsrCandidate,
     AsrMetrics,
@@ -58,6 +56,29 @@ _DIARIZATION_CANDIDATES = {
         True,
     ),
 }
+
+
+def run_asr_candidate(audio: Path, candidate: AsrCandidate, align_model: str | None) -> Any:
+    """Load the optional ML ASR runner only when an ASR benchmark is executed."""
+    try:
+        from audio_transcribe.benchmark.asr_runner import run_asr_candidate as execute
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("ASR benchmarks require optional ML packages; run `uv sync --extra ml`.") from exc
+    return execute(audio, candidate, align_model)
+
+
+def run_diarization_candidate(
+    audio: Path,
+    aligned_result: dict[str, Any],
+    token: str,
+    candidate: DiarizationCandidate,
+) -> Any:
+    """Load torch and pyannote only when a diarization benchmark is executed."""
+    try:
+        from audio_transcribe.benchmark.diarization_runner import run_diarization_candidate as execute
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("Diarization benchmarks require optional ML packages; run `uv sync --extra ml`.") from exc
+    return execute(audio, aligned_result, token, candidate)
 
 
 def _sha256(path: Path) -> str:
@@ -558,7 +579,11 @@ def run_diarization_command(
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
-    result = run_diarization_candidate(audio, aligned, token, definition)
+    try:
+        result = run_diarization_candidate(audio, aligned, token, definition)
+    except RuntimeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
     try:
         write_diarization_run(
             root,

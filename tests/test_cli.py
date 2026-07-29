@@ -2,6 +2,8 @@
 
 import os
 import re
+import subprocess
+import sys
 
 from typer.testing import CliRunner
 
@@ -19,6 +21,30 @@ def test_cli_help():
     assert result.exit_code == 0
     assert "process" in result.output
     assert "benchmark" in result.output
+
+
+def test_core_cli_and_benchmark_help_do_not_import_optional_ml_packages() -> None:
+    """Core and benchmark help must remain usable when the ml extra is absent."""
+    script = """
+import sys
+sys.modules["torch"] = None
+sys.modules["pyannote"] = None
+from typer.testing import CliRunner
+from audio_transcribe.cli import app
+runner = CliRunner()
+for args in (["--help"], ["benchmark", "--help"], ["stats", "--help"]):
+    result = runner.invoke(app, args)
+    if result.exit_code != 0:
+        raise SystemExit(f"{args}: {result.exception}\\n{result.output}")
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
 
 
 def test_cli_version() -> None:

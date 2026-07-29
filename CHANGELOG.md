@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file. Format foll
 - Private ASR benchmark CLI for reference preparation, candidate runs, evaluation, and reports
 
 ### Fixed
+- Keep optional torch/pyannote benchmark runners lazy so core CLI and help work without the `ml` extra
+- Bind machine and Markdown benchmark reports to one validated generation with rollback-safe publication
+- Report the combined sequential pipeline peak as the maximum of ASR and diarization component peaks
+- Replace private workstation, recording, dataset, vault, and model-cache paths in tracked benchmark documentation with reusable variables
 - Include validated end-to-end combined RTF in machine-readable and Markdown benchmark reports
 - Include selected ASR metrics, stage timings, DER components, and checksum evidence in combined benchmark reports
 - Invalidate benchmark evaluations before artifact replacement so partial writes cannot preserve stale trusted evidence

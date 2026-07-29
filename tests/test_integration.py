@@ -35,6 +35,7 @@ def test_process_json_mode_with_mock(tmp_path, monkeypatch):
     # Redirect history/corrections away from home directory
     monkeypatch.setattr("audio_transcribe.cli._DEFAULT_HISTORY", tmp_path / "history.json")
     monkeypatch.setattr("audio_transcribe.cli._DEFAULT_CORRECTIONS", tmp_path / "corrections.yaml")
+    monkeypatch.setattr("audio_transcribe.cli._DEFAULT_STATE", tmp_path / "state")
 
     with (
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=str(audio)),
@@ -73,6 +74,7 @@ def test_process_with_transcript_output(tmp_path, monkeypatch):
 
     monkeypatch.setattr("audio_transcribe.cli._DEFAULT_HISTORY", tmp_path / "history.json")
     monkeypatch.setattr("audio_transcribe.cli._DEFAULT_CORRECTIONS", tmp_path / "corrections.yaml")
+    monkeypatch.setattr("audio_transcribe.cli._DEFAULT_STATE", tmp_path / "state")
 
     with (
         patch("audio_transcribe.pipeline.preprocess_stage", return_value=str(audio)),

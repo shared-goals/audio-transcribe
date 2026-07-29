@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import asdict
 from math import isfinite
@@ -356,7 +357,9 @@ def _combined_report(
                 "combined_rtf": combined_rtf,
                 "combined_baseline_ratio": combined / baseline_combined if successful else None,
                 "forecasts": forecasts,
-                "peak_rss_mb": run.peak_rss_mb,
+                "asr_peak_rss_mb": selected.manifest.peak_rss_mb,
+                "diarization_peak_rss_mb": run.peak_rss_mb,
+                "combined_sequential_peak_rss_mb": max(selected.manifest.peak_rss_mb, run.peak_rss_mb),
                 "status": run.status,
                 "error": run.error,
             }
@@ -379,14 +382,17 @@ def _combined_report(
             _format_forecast(by_duration.get(30)),
             _format_forecast(by_duration.get(60)),
             _format_forecast(by_duration.get(120)),
+            _format_number(selected.manifest.peak_rss_mb, " MB"),
             _format_number(run.peak_rss_mb, " MB"),
+            _format_number(max(selected.manifest.peak_rss_mb, run.peak_rss_mb), " MB"),
             status,
         )
         rows.append("| " + " | ".join(_markdown_cell(value) for value in values) + " |")
     header = (
         "| Candidate | DER | Missed speech | False alarm | Confusion | Word speaker accuracy | Fragmented turns | "
         "Diarization runtime | Combined runtime | Combined RTF | Combined baseline ratio | 30 min forecast | "
-        "60 min forecast | 120 min forecast | Peak RAM | Status |"
+        "60 min forecast | 120 min forecast | ASR peak RAM | Diarization peak RAM | "
+        "Combined sequential peak RAM | Status |"
     )
     stage_times = selected.manifest.stage_times_s
     evidence = diarization_results[0]
@@ -414,7 +420,7 @@ def _combined_report(
             + " |",
             "",
             header,
-            "| " + " | ".join("---" for _ in range(16)) + " |",
+            "| " + " | ".join("---" for _ in range(18)) + " |",
             *rows,
             "",
             "## Evidence",
@@ -434,6 +440,26 @@ def _combined_report(
         )
     )
     return {"diarization_ranking": asdict(ranking), "diarization_results": records}, markdown
+
+
+def _sha256_text(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def validate_report_pair(metrics_path: Path, report_path: Path) -> None:
+    """Reject machine and human reports that do not belong to one publication generation."""
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    if not isinstance(metrics, dict):
+        raise ValueError("benchmark metrics must contain an object")
+    generation_id = metrics.get("generation_id")
+    report_sha256 = metrics.get("report_sha256")
+    report_content = report_path.read_text(encoding="utf-8")
+    if not isinstance(generation_id, str) or not generation_id:
+        raise ValueError("benchmark report generation ID is missing")
+    if f"Benchmark generation: `{generation_id}`" not in report_content:
+        raise ValueError("benchmark report generation mismatch")
+    if not isinstance(report_sha256, str) or _sha256_text(report_content) != report_sha256:
+        raise ValueError("benchmark report checksum mismatch")
 
 
 def write_report(
@@ -462,7 +488,22 @@ def write_report(
             raise ValueError("combined report requires selected ASR and audio duration")
         combined, report_content = _combined_report(results, diarization_results, selected_asr_name, audio_duration_s)
         aggregate.update(combined)
+    generation_seed = json.dumps(aggregate, ensure_ascii=False, sort_keys=True, allow_nan=False) + report_content
+    generation_id = _sha256_text(generation_seed)
+    heading, separator, body = report_content.partition("\n")
+    report_content = f"{heading}\n\nBenchmark generation: `{generation_id}`\n{separator}{body}"
+    aggregate["generation_id"] = generation_id
+    aggregate["report_sha256"] = _sha256_text(report_content)
     metrics_content = json.dumps(aggregate, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
-    atomic_write_text(metrics_path, metrics_content)
+    prior_report = report_path.read_text(encoding="utf-8") if report_path.is_file() else None
     atomic_write_text(report_path, report_content)
+    try:
+        atomic_write_text(metrics_path, metrics_content)
+    except Exception:
+        if prior_report is None:
+            report_path.unlink(missing_ok=True)
+        else:
+            atomic_write_text(report_path, prior_report)
+        raise
+    validate_report_pair(metrics_path, report_path)
     return metrics_path, report_path

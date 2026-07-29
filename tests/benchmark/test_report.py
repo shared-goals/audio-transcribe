@@ -15,7 +15,7 @@ from audio_transcribe.benchmark.models import (
     EvaluatedDiarizationRun,
     RunManifest,
 )
-from audio_transcribe.benchmark.report import forecast, rank_asr, write_report
+from audio_transcribe.benchmark.report import forecast, rank_asr, validate_report_pair, write_report
 
 
 def _metrics(
@@ -198,6 +198,8 @@ def test_write_report_preserves_failures_and_required_comparison_fields(tmp_path
     assert metrics_path == tmp_path / "metrics.json"
     assert report_path == tmp_path / "report.md"
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    validate_report_pair(metrics_path, report_path)
+    assert metrics["generation_id"] in report_path.read_text(encoding="utf-8")
     assert metrics["ranking"]["default_winner"] == "candidate"
     assert metrics["forecast_durations_minutes"] == [30, 60, 120]
     failed = next(value for value in metrics["results"] if value["candidate"] == "failed")
@@ -230,6 +232,42 @@ def test_write_report_preserves_failures_and_required_comparison_fields(tmp_path
     assert "Default winner: **candidate**" in report
     assert "failed: model unavailable" in report
     assert "±15%" in report
+
+
+def test_write_report_rolls_back_human_report_when_metrics_publication_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed authoritative metrics write must leave the prior report pair intact."""
+    initial = (_run("baseline", total=100.0, wer=0.3),)
+    metrics_path, report_path = write_report(tmp_path, initial)
+    old_metrics = metrics_path.read_text(encoding="utf-8")
+    old_report = report_path.read_text(encoding="utf-8")
+    from audio_transcribe.util import atomic_write_text as real_atomic_write
+
+    def fail_metrics(path: Path, content: str) -> None:
+        if Path(path).name == "metrics.json":
+            raise OSError("injected metrics publication failure")
+        real_atomic_write(path, content)
+
+    monkeypatch.setattr("audio_transcribe.benchmark.report.atomic_write_text", fail_metrics)
+
+    with pytest.raises(OSError, match="injected"):
+        write_report(tmp_path, (_run("baseline", total=80.0, wer=0.2),))
+
+    assert metrics_path.read_text(encoding="utf-8") == old_metrics
+    assert report_path.read_text(encoding="utf-8") == old_report
+    validate_report_pair(metrics_path, report_path)
+
+
+def test_validate_report_pair_detects_mixed_generations(tmp_path: Path) -> None:
+    """A partial or external replacement must be detectable before consumption."""
+    metrics_path, report_path = write_report(tmp_path, (_run("baseline", total=100.0, wer=0.3),))
+    report_path.write_text(
+        report_path.read_text(encoding="utf-8").replace("ASR benchmark", "stale benchmark"), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        validate_report_pair(metrics_path, report_path)
 
 
 def test_write_report_combines_diarization_quality_runtime_and_forecasts(tmp_path: Path) -> None:
@@ -277,6 +315,9 @@ def test_write_report_combines_diarization_quality_runtime_and_forecasts(tmp_pat
     assert candidate["combined_time_s"] == 110.0
     assert candidate["combined_rtf"] == pytest.approx(0.55)
     assert candidate["combined_baseline_ratio"] == pytest.approx(110 / 120)
+    assert candidate["asr_peak_rss_mb"] == 512.0
+    assert candidate["diarization_peak_rss_mb"] == 600.0
+    assert candidate["combined_sequential_peak_rss_mb"] == 600.0
     assert [item["duration_minutes"] for item in candidate["forecasts"]] == [30, 60, 120]
     report = report_path.read_text(encoding="utf-8")
     for heading in (
@@ -296,6 +337,7 @@ def test_write_report_combines_diarization_quality_runtime_and_forecasts(tmp_pat
         "Diarization runtime",
         "Combined RTF",
         "Combined baseline ratio",
+        "Combined sequential peak RAM",
         "30 min forecast",
         "60 min forecast",
         "120 min forecast",
