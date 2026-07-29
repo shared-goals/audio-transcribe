@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file. Format foll
 - Private ASR benchmark CLI for reference preparation, candidate runs, evaluation, and reports
 
 ### Fixed
+- Bind diarization evaluations to exact run results, recompute the current ASR winner, and reject malformed quality evidence
 - Convert oversized diarization benchmark numeric inputs into stable validation errors
 - Reject undefined collar-only diarization scores and normalize validated speaker labels consistently
 - Require finite positive audio duration in diarization references and normalize speaker IDs before validation

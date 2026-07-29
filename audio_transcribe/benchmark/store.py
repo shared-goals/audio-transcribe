@@ -75,4 +75,5 @@ def write_diarization_run(
     }
     path = dataset.expanduser().resolve() / "runs" / "diarization" / result.candidate.name / "result.json"
     atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+    (path.parent / "evaluation.json").unlink(missing_ok=True)
     return path

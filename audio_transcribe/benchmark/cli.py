@@ -29,9 +29,10 @@ from audio_transcribe.benchmark.models import (
     RunManifest,
     SpeakerTurn,
     validate_asr_metrics,
+    validate_diarization_metrics,
 )
 from audio_transcribe.benchmark.reference import parse_reference, prepare_reference
-from audio_transcribe.benchmark.report import write_report
+from audio_transcribe.benchmark.report import rank_asr, write_report
 from audio_transcribe.benchmark.speaker_reference import load_speaker_reference
 from audio_transcribe.benchmark.store import write_diarization_run, write_run
 from audio_transcribe.pipeline import _probe_duration
@@ -295,6 +296,7 @@ def _evaluated_runs(dataset: Path, dataset_manifest: dict[str, Any]) -> tuple[Ev
 def _diarization_inputs(
     root: Path,
     manifest: dict[str, Any],
+    selected_asr_name: str,
 ) -> tuple[Path, dict[str, Any], str, Path, str, tuple[SpeakerTurn, ...], float]:
     reference_path = root / "reference-speakers.json"
     if manifest.get("speaker_reference_status") != "accepted" or not reference_path.is_file():
@@ -309,6 +311,9 @@ def _diarization_inputs(
     aligned_path = Path(raw_aligned_path).expanduser().resolve()
     if not aligned_path.is_file() or _sha256(aligned_path) != aligned_sha256:
         raise ValueError("aligned ASR checksum mismatch")
+    expected_aligned_path = (root / "runs" / selected_asr_name / "result.json").resolve()
+    if aligned_path != expected_aligned_path:
+        raise ValueError("aligned ASR does not belong to the current winning ASR candidate")
     reference = load_speaker_reference(reference_path)
     if reference.source_sha256 != manifest["audio_sha256"] or reference.aligned_asr_sha256 != aligned_sha256:
         raise ValueError("speaker reference evidence checksum mismatch")
@@ -331,13 +336,15 @@ def _diarization_metrics(payload: dict[str, Any]) -> DiarizationMetrics:
     mapping = converted.get("label_mapping")
     if not isinstance(mapping, dict):
         raise ValueError("invalid diarization label mapping")
-    converted["label_mapping"] = {str(key): str(value) for key, value in mapping.items()}
-    return DiarizationMetrics(**converted)
+    metrics = DiarizationMetrics(**converted)
+    validate_diarization_metrics(metrics)
+    return metrics
 
 
 def _evaluated_diarization_runs(
     dataset: Path,
     manifest: dict[str, Any],
+    selected_asr_name: str,
 ) -> tuple[EvaluatedDiarizationRun, ...]:
     root = dataset / "runs" / "diarization"
     if not root.is_dir():
@@ -345,6 +352,7 @@ def _evaluated_diarization_runs(
     _audio, _aligned, aligned_sha256, _reference, speaker_sha256, _turns, _duration = _diarization_inputs(
         dataset,
         manifest,
+        selected_asr_name,
     )
     values: list[EvaluatedDiarizationRun] = []
     for candidate_dir in sorted(path for path in root.iterdir() if path.is_dir()):
@@ -354,6 +362,7 @@ def _evaluated_diarization_runs(
             continue
         result = json.loads(result_path.read_text(encoding="utf-8"))
         evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
+        result_sha256 = _sha256(result_path)
         expected = (manifest["audio_sha256"], aligned_sha256, speaker_sha256)
         if (
             not isinstance(result, dict)
@@ -370,7 +379,10 @@ def _evaluated_diarization_runs(
                 evaluation.get("speaker_reference_sha256"),
             )
             != expected
+            or evaluation.get("result_sha256") != result_sha256
         ):
+            if isinstance(evaluation, dict) and evaluation.get("result_sha256") != result_sha256:
+                raise ValueError(f"diarization result checksum mismatch: {candidate_dir.name}")
             raise ValueError(f"diarization evidence checksum mismatch: {candidate_dir.name}")
         candidate = result.get("candidate")
         if not isinstance(candidate, dict):
@@ -515,9 +527,12 @@ def run_diarization_command(
     """Run and persist one isolated two-speaker diarization candidate."""
     try:
         root, manifest, _reference, _vocabulary = _load_dataset(dataset)
+        asr_runs = _evaluated_runs(root, manifest)
+        selected_asr_name = rank_asr(asr_runs, "baseline").default_winner
         audio, aligned, aligned_sha256, _speaker_path, speaker_sha256, _turns, _duration = _diarization_inputs(
             root,
             manifest,
+            selected_asr_name,
         )
         definition = _DIARIZATION_CANDIDATES.get(candidate)
         if definition is None:
@@ -553,6 +568,8 @@ def evaluate_diarization_command(
     """Evaluate all persisted diarization candidates against the accepted speaker reference."""
     try:
         root, manifest, _reference, _vocabulary = _load_dataset(dataset)
+        asr_runs = _evaluated_runs(root, manifest)
+        selected_asr_name = rank_asr(asr_runs, "baseline").default_winner
         (
             _audio,
             _aligned,
@@ -561,7 +578,7 @@ def evaluate_diarization_command(
             speaker_sha256,
             reference_turns,
             _duration,
-        ) = _diarization_inputs(root, manifest)
+        ) = _diarization_inputs(root, manifest, selected_asr_name)
         runs_root = root / "runs" / "diarization"
         evaluated = 0
         for candidate_dir in sorted(path for path in runs_root.iterdir() if path.is_dir()):
@@ -591,6 +608,7 @@ def evaluate_diarization_command(
                 "source_sha256": manifest["audio_sha256"],
                 "aligned_asr_sha256": aligned_sha256,
                 "speaker_reference_sha256": speaker_sha256,
+                "result_sha256": _sha256(result_path),
                 "metrics": asdict(metrics) if metrics else None,
             }
             atomic_write_text(
@@ -615,17 +633,14 @@ def report(
         root, dataset_manifest, _reference, _vocabulary_path = _load_dataset(dataset)
         _audio_path(dataset_manifest)
         asr_runs = _evaluated_runs(root, dataset_manifest)
-        diarization_runs = _evaluated_diarization_runs(root, dataset_manifest)
+        selected_asr = rank_asr(asr_runs, "baseline").default_winner
+        diarization_runs = _evaluated_diarization_runs(root, dataset_manifest, selected_asr)
         if diarization_runs:
             _audio, _aligned, _aligned_sha, _speaker, _speaker_sha, _turns, duration_s = _diarization_inputs(
                 root,
                 dataset_manifest,
+                selected_asr,
             )
-            metrics = json.loads((root / "metrics.json").read_text(encoding="utf-8"))
-            ranking = metrics.get("ranking") if isinstance(metrics, dict) else None
-            selected_asr = ranking.get("default_winner") if isinstance(ranking, dict) else None
-            if not isinstance(selected_asr, str):
-                raise ValueError("combined report requires a selected ASR winner")
             metrics_path, report_path = write_report(
                 root,
                 asr_runs,

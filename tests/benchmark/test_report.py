@@ -289,6 +289,53 @@ def test_write_report_combines_diarization_quality_runtime_and_forecasts(tmp_pat
         assert heading in report
 
 
+@pytest.mark.parametrize(
+    "metrics",
+    (
+        DiarizationMetrics(float("nan"), 0.0, 0.0, 0.0, 1.0, 0, {}),
+        DiarizationMetrics(float("inf"), 0.0, 0.0, 0.0, 1.0, 0, {}),
+        DiarizationMetrics(-0.1, 0.0, 0.0, 0.0, 1.0, 0, {}),
+        DiarizationMetrics(0.1, -0.1, 0.0, 0.0, 1.0, 0, {}),
+        DiarizationMetrics(0.1, 0.0, float("inf"), 0.0, 1.0, 0, {}),
+        DiarizationMetrics(0.1, 0.0, 0.0, -0.1, 1.0, 0, {}),
+        DiarizationMetrics(0.1, 0.0, 0.0, 0.0, -0.1, 0, {}),
+        DiarizationMetrics(0.1, 0.0, 0.0, 0.0, 1.1, 0, {}),
+        DiarizationMetrics(0.1, 0.0, 0.0, 0.0, 1.0, -1, {}),
+        DiarizationMetrics(0.1, 0.0, 0.0, 0.0, 1.0, True, {}),
+        DiarizationMetrics(0.1, 0.0, 0.0, 0.0, 1.0, 0, {"": "A"}),
+        DiarizationMetrics(0.1, 0.0, 0.0, 0.0, 1.0, 0, {"P0": ""}),
+        DiarizationMetrics(0.1, 0.0, 0.0, 0.0, 1.0, 0, {1: "A"}),  # type: ignore[dict-item]
+        DiarizationMetrics(0.1, 0.0, 0.0, 0.0, 1.0, 0, {"P0": 1}),  # type: ignore[dict-item]
+    ),
+)
+def test_combined_report_rejects_invalid_diarization_metrics(
+    tmp_path: Path,
+    metrics: DiarizationMetrics,
+) -> None:
+    run = EvaluatedDiarizationRun(
+        candidate_name="pyannote-3.1",
+        source_sha256="audio-sha",
+        aligned_asr_sha256="aligned-sha",
+        speaker_reference_sha256="speaker-sha",
+        model="pyannote/speaker-diarization-3.1",
+        exclusive=False,
+        time_s=20.0,
+        peak_rss_mb=700.0,
+        status="completed",
+        error=None,
+        metrics=metrics,
+    )
+
+    with pytest.raises(ValueError, match="invalid diarization metrics"):
+        write_report(
+            tmp_path,
+            (_run("baseline", total=100.0, wer=0.3, rtf=0.5),),
+            diarization_results=(run,),
+            selected_asr_name="baseline",
+            audio_duration_s=200.0,
+        )
+
+
 @pytest.mark.parametrize("rtf", (0.0, -0.1, float("nan"), float("inf"), float("-inf")))
 def test_forecast_rejects_non_finite_or_non_positive_rtf(rtf: float) -> None:
     """Forecasts must never emit invalid, zero, or non-finite processing times."""

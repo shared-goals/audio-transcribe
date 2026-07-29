@@ -13,6 +13,7 @@ from audio_transcribe.benchmark.models import (
     EvaluatedDiarizationRun,
     Forecast,
     Ranking,
+    validate_diarization_metrics,
     validate_evaluated_asr_run,
 )
 from audio_transcribe.util import atomic_write_text
@@ -245,6 +246,7 @@ def _validate_diarization_run(run: EvaluatedDiarizationRun) -> None:
     if run.status == "completed":
         if run.error is not None or run.metrics is None or run.time_s <= 0.0:
             raise ValueError("invalid completed diarization run")
+        validate_diarization_metrics(run.metrics)
     elif not run.error or run.metrics is not None:
         raise ValueError("invalid failed diarization run")
 

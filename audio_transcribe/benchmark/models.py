@@ -230,6 +230,25 @@ def validate_asr_metrics(metrics: AsrMetrics) -> None:
         raise ValueError("invalid ASR metrics")
 
 
+def validate_diarization_metrics(metrics: DiarizationMetrics) -> None:
+    """Reject non-finite, negative, out-of-range, or malformed diarization quality values."""
+    nonnegative = (metrics.der, metrics.missed_speech_s, metrics.false_alarm_s, metrics.confusion_s)
+    if (
+        any(not isfinite(value) or value < 0.0 for value in nonnegative)
+        or not isfinite(metrics.word_speaker_accuracy)
+        or not 0.0 <= metrics.word_speaker_accuracy <= 1.0
+        or isinstance(metrics.fragmented_turns, bool)
+        or not isinstance(metrics.fragmented_turns, int)
+        or metrics.fragmented_turns < 0
+        or not isinstance(metrics.label_mapping, dict)
+        or any(
+            not isinstance(source, str) or not source.strip() or not isinstance(target, str) or not target.strip()
+            for source, target in metrics.label_mapping.items()
+        )
+    ):
+        raise ValueError("invalid diarization metrics")
+
+
 def validate_evaluated_asr_run(run: EvaluatedAsrRun) -> None:
     """Enforce the completed/failed metrics and real-time-factor state machine."""
     validate_run_manifest(run.manifest)
