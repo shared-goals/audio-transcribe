@@ -12,28 +12,51 @@ from audio_transcribe.benchmark.models import DiarizationMetrics, SpeakerTurn
 _FRAGMENT_THRESHOLD_S = 0.5
 
 
-def _validate_turns(turns: Sequence[SpeakerTurn], *, name: str, require_two_speakers: bool) -> tuple[str, ...]:
+def _normalize_turns(
+    turns: object,
+    *,
+    name: str,
+    require_two_speakers: bool,
+) -> tuple[tuple[SpeakerTurn, ...], tuple[str, ...]]:
+    if not isinstance(turns, Sequence):
+        raise ValueError(f"{name} turns must be a sequence")
     speakers: set[str] = set()
+    normalized_turns: list[SpeakerTurn] = []
     for turn in turns:
+        if not isinstance(turn, SpeakerTurn):
+            raise ValueError(f"invalid {name} turn")
+        start = turn.start_s
+        end = turn.end_s
         if (
-            not isfinite(turn.start_s)
-            or not isfinite(turn.end_s)
-            or turn.start_s < 0.0
-            or turn.end_s <= turn.start_s
+            not isinstance(start, (int, float))
+            or isinstance(start, bool)
+            or not isinstance(end, (int, float))
+            or isinstance(end, bool)
+            or not isfinite(start)
+            or not isfinite(end)
+            or start < 0.0
+            or end <= start
             or not isinstance(turn.speaker, str)
             or not turn.speaker.strip()
         ):
             raise ValueError(f"invalid {name} turn")
-        speakers.add(turn.speaker)
+        speaker = turn.speaker.strip()
+        speakers.add(speaker)
+        normalized_turns.append(SpeakerTurn(float(start), float(end), speaker))
     if require_two_speakers and len(speakers) != 2:
         raise ValueError("reference must contain exactly two speakers")
     if len(speakers) > 2:
         raise ValueError(f"{name} must contain at most two speakers")
-    return tuple(sorted(speakers))
+    return tuple(normalized_turns), tuple(sorted(speakers))
 
 
-def _validate_words(aligned_words: Sequence[Mapping[str, object]]) -> None:
+def _normalize_words(aligned_words: object) -> tuple[Mapping[str, object], ...]:
+    if not isinstance(aligned_words, Sequence):
+        raise ValueError("aligned words must be a sequence")
+    normalized_words: list[Mapping[str, object]] = []
     for word in aligned_words:
+        if not isinstance(word, Mapping):
+            raise ValueError("invalid aligned word")
         start = word.get("start")
         end = word.get("end")
         if (
@@ -50,6 +73,14 @@ def _validate_words(aligned_words: Sequence[Mapping[str, object]]) -> None:
         speaker = word.get("speaker")
         if speaker is not None and (not isinstance(speaker, str) or not speaker.strip()):
             raise ValueError("invalid aligned word speaker")
+        normalized_words.append(
+            {
+                "start": float(start),
+                "end": float(end),
+                "speaker": speaker.strip() if isinstance(speaker, str) else None,
+            }
+        )
+    return tuple(normalized_words)
 
 
 def _active_speakers(turns: Sequence[SpeakerTurn], midpoint: float) -> set[str]:
@@ -128,14 +159,24 @@ def evaluate_diarization(
     collar_s: float = 0.0,
 ) -> DiarizationMetrics:
     """Score a two-speaker prediction after choosing the best anonymous-label permutation."""
-    if not isfinite(collar_s) or collar_s < 0.0:
+    if not isinstance(collar_s, (int, float)) or isinstance(collar_s, bool) or not isfinite(collar_s) or collar_s < 0.0:
         raise ValueError("collar_s must be finite and non-negative")
-    reference_speakers = _validate_turns(reference, name="reference", require_two_speakers=True)
-    predicted_speakers = _validate_turns(predicted_turns, name="prediction", require_two_speakers=False)
-    _validate_words(aligned_words)
+    normalized_reference, reference_speakers = _normalize_turns(
+        reference,
+        name="reference",
+        require_two_speakers=True,
+    )
+    normalized_prediction, predicted_speakers = _normalize_turns(
+        predicted_turns,
+        name="prediction",
+        require_two_speakers=False,
+    )
+    normalized_words = _normalize_words(aligned_words)
 
-    reference_boundaries = {edge for turn in reference for edge in (turn.start_s, turn.end_s)}
-    raw_boundaries = reference_boundaries | {edge for turn in predicted_turns for edge in (turn.start_s, turn.end_s)}
+    reference_boundaries = {edge for turn in normalized_reference for edge in (turn.start_s, turn.end_s)}
+    raw_boundaries = reference_boundaries | {
+        edge for turn in normalized_prediction for edge in (turn.start_s, turn.end_s)
+    }
     if collar_s > 0.0:
         raw_boundaries |= {
             collar_edge
@@ -147,23 +188,25 @@ def evaluate_diarization(
     scored = []
     for mapping in _mapping_candidates(predicted_speakers, reference_speakers):
         components = _score_mapping(
-            reference,
-            predicted_turns,
+            normalized_reference,
+            normalized_prediction,
             mapping,
             boundaries,
             reference_boundaries,
-            collar_s,
+            float(collar_s),
         )
         scored.append((sum(components[:3]), tuple(mapping.items()), mapping, components))
     _, _, best_mapping, (missed, false_alarm, confusion, reference_speech) = min(scored)
-    der = (missed + false_alarm + confusion) / reference_speech if reference_speech else 0.0
+    if reference_speech <= 0.0:
+        raise ValueError("collar leaves no scored reference speaker-time")
+    der = (missed + false_alarm + confusion) / reference_speech
 
     return DiarizationMetrics(
         der=der,
         missed_speech_s=missed,
         false_alarm_s=false_alarm,
         confusion_s=confusion,
-        word_speaker_accuracy=_word_speaker_accuracy(reference, aligned_words, best_mapping),
-        fragmented_turns=sum(turn.end_s - turn.start_s < _FRAGMENT_THRESHOLD_S for turn in predicted_turns),
+        word_speaker_accuracy=_word_speaker_accuracy(normalized_reference, normalized_words, best_mapping),
+        fragmented_turns=sum(turn.end_s - turn.start_s < _FRAGMENT_THRESHOLD_S for turn in normalized_prediction),
         label_mapping=best_mapping,
     )

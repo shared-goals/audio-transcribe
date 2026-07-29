@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from audio_transcribe.benchmark.diarization_metrics import evaluate_diarization
@@ -132,6 +134,128 @@ def test_collar_excludes_reference_boundary_regions() -> None:
     metrics = evaluate_diarization(reference, predicted, aligned_words=[], collar_s=0.25)
 
     assert metrics.der == 0.0
+
+
+@pytest.mark.parametrize(
+    "predicted",
+    [
+        (),
+        (SpeakerTurn(0.0, 2.0, "p0"),),
+    ],
+)
+def test_rejects_undefined_der_when_collar_removes_all_reference_speech(
+    predicted: tuple[SpeakerTurn, ...],
+) -> None:
+    reference = (
+        SpeakerTurn(0.0, 2.0, "a"),
+        SpeakerTurn(0.0, 2.0, "b"),
+    )
+
+    with pytest.raises(ValueError, match="reference speaker-time"):
+        evaluate_diarization(reference, predicted, aligned_words=[], collar_s=2.0)
+
+
+def test_rejects_undefined_der_when_endpoint_collars_cover_adjacent_turns() -> None:
+    reference = (
+        SpeakerTurn(0.0, 1.0, "a"),
+        SpeakerTurn(1.0, 2.0, "b"),
+    )
+
+    with pytest.raises(ValueError, match="reference speaker-time"):
+        evaluate_diarization(reference, (), aligned_words=[], collar_s=1.0)
+
+
+def test_normalizes_speaker_labels_before_mapping_and_word_accuracy() -> None:
+    reference = (
+        SpeakerTurn(0.0, 1.0, " a "),
+        SpeakerTurn(1.0, 2.0, " b "),
+    )
+    predicted = (
+        SpeakerTurn(0.0, 1.0, " p0 "),
+        SpeakerTurn(1.0, 2.0, " p1 "),
+    )
+    words = [{"start": 0.1, "end": 0.9, "speaker": " p0 "}]
+
+    metrics = evaluate_diarization(reference, predicted, aligned_words=words)
+
+    assert metrics.label_mapping == {"p0": "a", "p1": "b"}
+    assert metrics.word_speaker_accuracy == 1.0
+
+
+@pytest.mark.parametrize(
+    ("reference", "predicted", "words", "collar"),
+    [
+        ([object()], [], [], 0.0),
+        (
+            [SpeakerTurn(True, 2.0, "a"), SpeakerTurn(2.0, 3.0, "b")],
+            [],
+            [],
+            0.0,
+        ),
+        (
+            [SpeakerTurn("0", 1.0, "a"), SpeakerTurn(1.0, 2.0, "b")],  # type: ignore[arg-type]
+            [],
+            [],
+            0.0,
+        ),
+        (
+            [SpeakerTurn(0.0, float("nan"), "a"), SpeakerTurn(1.0, 2.0, "b")],
+            [],
+            [],
+            0.0,
+        ),
+        (
+            [SpeakerTurn(0.0, 1.0, "a"), SpeakerTurn(1.0, 2.0, "b")],
+            [object()],
+            [],
+            0.0,
+        ),
+        (
+            [SpeakerTurn(0.0, 1.0, "a"), SpeakerTurn(1.0, 2.0, "b")],
+            [],
+            [object()],
+            0.0,
+        ),
+        (
+            [SpeakerTurn(0.0, 1.0, "a"), SpeakerTurn(1.0, 2.0, "b")],
+            [],
+            [{"start": "0", "end": 0.5, "speaker": "p0"}],
+            0.0,
+        ),
+        (
+            [SpeakerTurn(0.0, 1.0, "a"), SpeakerTurn(1.0, 2.0, "b")],
+            [],
+            [{"end": 0.5, "speaker": "p0"}],
+            0.0,
+        ),
+        (
+            [SpeakerTurn(0.0, 1.0, "a"), SpeakerTurn(1.0, 2.0, "b")],
+            [],
+            [{"start": 0.0, "end": float("inf"), "speaker": "p0"}],
+            0.0,
+        ),
+        (
+            [SpeakerTurn(0.0, 1.0, "a"), SpeakerTurn(1.0, 2.0, "b")],
+            [],
+            [{"start": 0.0, "end": 0.5, "speaker": True}],
+            0.0,
+        ),
+        (
+            [SpeakerTurn(0.0, 1.0, "a"), SpeakerTurn(1.0, 2.0, "b")],
+            [],
+            [],
+            True,
+        ),
+    ],
+)
+def test_public_evaluator_converts_malformed_shapes_to_value_error(
+    reference: Any,
+    predicted: Any,
+    words: Any,
+    collar: Any,
+) -> None:
+    with pytest.raises(ValueError):
+        evaluate_diarization(reference, predicted, aligned_words=words, collar_s=collar)
 
 
 @pytest.mark.parametrize(
