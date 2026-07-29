@@ -275,6 +275,7 @@ def test_write_report_combines_diarization_quality_runtime_and_forecasts(tmp_pat
     assert payload["diarization_ranking"]["default_winner"] == "community-1"
     candidate = next(item for item in payload["diarization_results"] if item["candidate"] == "community-1")
     assert candidate["combined_time_s"] == 110.0
+    assert candidate["combined_rtf"] == pytest.approx(0.55)
     assert candidate["combined_baseline_ratio"] == pytest.approx(110 / 120)
     assert [item["duration_minutes"] for item in candidate["forecasts"]] == [30, 60, 120]
     report = report_path.read_text(encoding="utf-8")
@@ -293,6 +294,7 @@ def test_write_report_combines_diarization_quality_runtime_and_forecasts(tmp_pat
         "Word speaker accuracy",
         "Fragmented turns",
         "Diarization runtime",
+        "Combined RTF",
         "Combined baseline ratio",
         "30 min forecast",
         "60 min forecast",
@@ -302,6 +304,33 @@ def test_write_report_combines_diarization_quality_runtime_and_forecasts(tmp_pat
     assert "Audio SHA-256: `audio-sha`" in report
     assert "Aligned ASR SHA-256: `aligned-sha`" in report
     assert "Speaker reference SHA-256: `speaker-sha`" in report
+
+
+def test_combined_report_rejects_non_finite_combined_rtf(tmp_path: Path) -> None:
+    diarization = (
+        EvaluatedDiarizationRun(
+            candidate_name="pyannote-3.1",
+            source_sha256="audio-sha",
+            aligned_asr_sha256="aligned-sha",
+            speaker_reference_sha256="speaker-sha",
+            model="pyannote/speaker-diarization-3.1",
+            exclusive=False,
+            time_s=20.0,
+            peak_rss_mb=700.0,
+            status="completed",
+            error=None,
+            metrics=DiarizationMetrics(0.2, 1.0, 2.0, 3.0, 0.9, 4, {"P0": "A", "P1": "B"}),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="combined real-time factor must be finite and positive"):
+        write_report(
+            tmp_path,
+            (_run("baseline", total=100.0, wer=0.3, rtf=0.5),),
+            diarization_results=diarization,
+            selected_asr_name="baseline",
+            audio_duration_s=1e-320,
+        )
 
 
 @pytest.mark.parametrize(

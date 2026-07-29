@@ -338,8 +338,10 @@ def _combined_report(
     for run in diarization_results:
         successful = run.status == "completed" and run.metrics is not None
         combined = combined_times[run.candidate_name]
-        rtf = combined / audio_duration_s if successful else None
-        forecasts = [asdict(forecast(rtf, duration)) for duration in _FORECAST_DURATIONS] if rtf else []
+        combined_rtf = combined / audio_duration_s
+        if not isfinite(combined_rtf) or combined_rtf <= 0.0:
+            raise ValueError("combined real-time factor must be finite and positive")
+        forecasts = [asdict(forecast(combined_rtf, duration)) for duration in _FORECAST_DURATIONS] if successful else []
         records.append(
             {
                 "candidate": run.candidate_name,
@@ -351,6 +353,7 @@ def _combined_report(
                 "metrics": asdict(run.metrics) if run.metrics else None,
                 "diarization_time_s": run.time_s,
                 "combined_time_s": combined,
+                "combined_rtf": combined_rtf,
                 "combined_baseline_ratio": combined / baseline_combined if successful else None,
                 "forecasts": forecasts,
                 "peak_rss_mb": run.peak_rss_mb,
@@ -371,6 +374,7 @@ def _combined_report(
             str(metrics.fragmented_turns) if metrics else "—",
             _format_number(run.time_s, " s"),
             _format_number(combined, " s"),
+            _format_number(combined_rtf),
             _format_number(combined / baseline_combined if successful else None, "x"),
             _format_forecast(by_duration.get(30)),
             _format_forecast(by_duration.get(60)),
@@ -381,8 +385,8 @@ def _combined_report(
         rows.append("| " + " | ".join(_markdown_cell(value) for value in values) + " |")
     header = (
         "| Candidate | DER | Missed speech | False alarm | Confusion | Word speaker accuracy | Fragmented turns | "
-        "Diarization runtime | Combined runtime | Combined baseline ratio | 30 min forecast | 60 min forecast | "
-        "120 min forecast | Peak RAM | Status |"
+        "Diarization runtime | Combined runtime | Combined RTF | Combined baseline ratio | 30 min forecast | "
+        "60 min forecast | 120 min forecast | Peak RAM | Status |"
     )
     stage_times = selected.manifest.stage_times_s
     evidence = diarization_results[0]
@@ -410,7 +414,7 @@ def _combined_report(
             + " |",
             "",
             header,
-            "| " + " | ".join("---" for _ in range(15)) + " |",
+            "| " + " | ".join("---" for _ in range(16)) + " |",
             *rows,
             "",
             "## Evidence",
