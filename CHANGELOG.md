@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file. Format foll
 ## [Unreleased]
 
 ### Added
+- Checksum-bound diarization benchmark CLI, evaluation, combined ASR+diarization ranking, and runtime forecasts
 - pyannote 3.1 and Community-1 benchmark adapters with exclusive speaker assignment
 - Permutation-invariant DER and word-level speaker metrics
 - Private two-speaker reference format for diarization benchmarks

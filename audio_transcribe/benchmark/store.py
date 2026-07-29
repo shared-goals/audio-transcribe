@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
-from audio_transcribe.benchmark.models import RunManifest, validate_run_manifest
+from audio_transcribe.benchmark.models import DiarizationRunResult, RunManifest, validate_run_manifest
 from audio_transcribe.util import atomic_write_text
 
 
@@ -37,3 +38,41 @@ def write_run(dataset: Path, manifest: RunManifest, result: dict[str, Any]) -> t
     atomic_write_text(manifest_path, manifest_content)
     atomic_write_text(result_path, result_content)
     return manifest_path, result_path
+
+
+def write_diarization_run(
+    dataset: Path,
+    result: DiarizationRunResult,
+    *,
+    source_sha256: str,
+    aligned_asr_sha256: str,
+    speaker_reference_sha256: str,
+) -> Path:
+    """Atomically persist successful or failed diarization evidence without touching sibling candidates."""
+    candidate_path = Path(result.candidate.name)
+    if candidate_path.name != result.candidate.name or result.candidate.name in {"", ".", ".."}:
+        raise ValueError("invalid benchmark candidate name")
+    if result.status not in {"completed", "failed"} or (result.status == "completed") == bool(result.error):
+        raise ValueError("invalid diarization run state")
+    if (
+        not isfinite(result.time_s)
+        or result.time_s < 0.0
+        or not isfinite(result.peak_rss_mb)
+        or result.peak_rss_mb < 0.0
+    ):
+        raise ValueError("invalid diarization run timing or memory")
+    payload = {
+        "candidate": asdict(result.candidate),
+        "source_sha256": source_sha256,
+        "aligned_asr_sha256": aligned_asr_sha256,
+        "speaker_reference_sha256": speaker_reference_sha256,
+        "turns": [asdict(turn) for turn in result.turns],
+        "word_assignments": list(result.word_assignments),
+        "time_s": result.time_s,
+        "peak_rss_mb": result.peak_rss_mb,
+        "status": result.status,
+        "error": result.error,
+    }
+    path = dataset.expanduser().resolve() / "runs" / "diarization" / result.candidate.name / "result.json"
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+    return path

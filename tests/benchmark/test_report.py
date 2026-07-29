@@ -8,7 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from audio_transcribe.benchmark.models import AsrMetrics, EvaluatedAsrRun, RunManifest
+from audio_transcribe.benchmark.models import (
+    AsrMetrics,
+    DiarizationMetrics,
+    EvaluatedAsrRun,
+    EvaluatedDiarizationRun,
+    RunManifest,
+)
 from audio_transcribe.benchmark.report import forecast, rank_asr, write_report
 
 
@@ -221,6 +227,66 @@ def test_write_report_preserves_failures_and_required_comparison_fields(tmp_path
     assert "Default winner: **candidate**" in report
     assert "failed: model unavailable" in report
     assert "±15%" in report
+
+
+def test_write_report_combines_diarization_quality_runtime_and_forecasts(tmp_path: Path) -> None:
+    asr = (_run("baseline", total=100.0, wer=0.3, rtf=0.5),)
+    diarization = (
+        EvaluatedDiarizationRun(
+            candidate_name="pyannote-3.1",
+            source_sha256="audio-sha",
+            aligned_asr_sha256="aligned-sha",
+            speaker_reference_sha256="speaker-sha",
+            model="pyannote/speaker-diarization-3.1",
+            exclusive=False,
+            time_s=20.0,
+            peak_rss_mb=700.0,
+            status="completed",
+            error=None,
+            metrics=DiarizationMetrics(0.2, 1.0, 2.0, 3.0, 0.9, 4, {"P0": "A", "P1": "B"}),
+        ),
+        EvaluatedDiarizationRun(
+            candidate_name="community-1",
+            source_sha256="audio-sha",
+            aligned_asr_sha256="aligned-sha",
+            speaker_reference_sha256="speaker-sha",
+            model="pyannote/speaker-diarization-community-1",
+            exclusive=False,
+            time_s=10.0,
+            peak_rss_mb=600.0,
+            status="completed",
+            error=None,
+            metrics=DiarizationMetrics(0.1, 0.5, 0.5, 1.0, 0.95, 2, {"P0": "A", "P1": "B"}),
+        ),
+    )
+
+    metrics_path, report_path = write_report(
+        tmp_path,
+        asr,
+        diarization_results=diarization,
+        selected_asr_name="baseline",
+        audio_duration_s=200.0,
+    )
+
+    payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    assert payload["diarization_ranking"]["default_winner"] == "community-1"
+    candidate = next(item for item in payload["diarization_results"] if item["candidate"] == "community-1")
+    assert candidate["combined_time_s"] == 110.0
+    assert candidate["combined_baseline_ratio"] == pytest.approx(110 / 120)
+    assert [item["duration_minutes"] for item in candidate["forecasts"]] == [30, 60, 120]
+    report = report_path.read_text(encoding="utf-8")
+    for heading in (
+        "DER",
+        "Confusion",
+        "Word speaker accuracy",
+        "Fragmented turns",
+        "Diarization runtime",
+        "Combined baseline ratio",
+        "30 min forecast",
+        "60 min forecast",
+        "120 min forecast",
+    ):
+        assert heading in report
 
 
 @pytest.mark.parametrize("rtf", (0.0, -0.1, float("nan"), float("inf"), float("-inf")))

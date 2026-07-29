@@ -13,7 +13,14 @@ import pytest
 from typer.testing import CliRunner
 
 from audio_transcribe.benchmark.cli import _git_commit
-from audio_transcribe.benchmark.models import AsrCandidate, AsrMetrics, AsrRunResult, RunManifest
+from audio_transcribe.benchmark.models import (
+    AsrCandidate,
+    AsrMetrics,
+    AsrRunResult,
+    DiarizationCandidate,
+    DiarizationRunResult,
+    RunManifest,
+)
 from audio_transcribe.cli import app
 from audio_transcribe.preflight import PreflightResult
 from audio_transcribe.stages.transcribe import MlxVadOptions
@@ -103,8 +110,99 @@ def test_benchmark_help_lists_commands() -> None:
     result = runner.invoke(app, ["benchmark", "--help"])
 
     assert result.exit_code == 0
-    for command in ("prepare", "run-asr", "evaluate-asr", "report"):
+    for command in ("prepare", "run-asr", "evaluate-asr", "run-diarization", "evaluate-diarization", "report"):
         assert command in result.output
+
+
+def _diarization_dataset(tmp_path: Path, *, status: str = "accepted") -> Path:
+    dataset, _audio = _accepted_dataset(tmp_path)
+    aligned = dataset / "runs" / "winner-context" / "result.json"
+    aligned.parent.mkdir()
+    aligned.write_text(
+        json.dumps({"segments": [{"words": [{"word": "тест", "start": 0.0, "end": 1.0}]}]}),
+        encoding="utf-8",
+    )
+    reference = dataset / "reference-speakers.json"
+    reference.write_text(
+        json.dumps(
+            {
+                "source_sha256": json.loads((dataset / "benchmark.json").read_text())["audio_sha256"],
+                "aligned_asr_sha256": _sha256(aligned),
+                "audio_duration_s": 2.0,
+                "turns": [
+                    {"start": 0.0, "end": 1.0, "speaker": "A"},
+                    {"start": 1.0, "end": 2.0, "speaker": "B"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = json.loads((dataset / "benchmark.json").read_text(encoding="utf-8"))
+    manifest.update(
+        {
+            "speaker_reference_status": status,
+            "speaker_reference_sha256": _sha256(reference),
+            "aligned_asr_path": str(aligned),
+            "aligned_asr_sha256": _sha256(aligned),
+        }
+    )
+    (dataset / "benchmark.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return dataset
+
+
+def test_run_diarization_rejects_draft_speaker_reference(tmp_path: Path) -> None:
+    dataset = _diarization_dataset(tmp_path, status="draft")
+
+    result = runner.invoke(
+        app,
+        ["benchmark", "run-diarization", "--dataset", str(dataset), "--candidate", "pyannote-3.1"],
+    )
+
+    assert result.exit_code == 1
+    assert "accepted speaker reference" in result.output
+
+
+def test_run_diarization_rejects_aligned_asr_checksum_mismatch_before_model(tmp_path: Path) -> None:
+    dataset = _diarization_dataset(tmp_path)
+    aligned = dataset / "runs" / "winner-context" / "result.json"
+    aligned.write_text('{"segments":[]}', encoding="utf-8")
+
+    with patch(
+        "audio_transcribe.benchmark.cli.run_diarization_candidate",
+        side_effect=AssertionError("model must not run"),
+    ):
+        result = runner.invoke(
+            app,
+            ["benchmark", "run-diarization", "--dataset", str(dataset), "--candidate", "pyannote-3.1"],
+        )
+
+    assert result.exit_code == 1
+    assert "aligned ASR checksum mismatch" in result.output
+
+
+def test_run_diarization_persists_failed_model_access(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset = _diarization_dataset(tmp_path)
+    monkeypatch.setenv("HF_TOKEN", "token")
+    failed = DiarizationRunResult(
+        DiarizationCandidate("community-1", "pyannote/speaker-diarization-community-1", False),
+        (),
+        (),
+        1.5,
+        100.0,
+        "failed",
+        "gated model",
+    )
+
+    with patch("audio_transcribe.benchmark.cli.run_diarization_candidate", return_value=failed):
+        result = runner.invoke(
+            app,
+            ["benchmark", "run-diarization", "--dataset", str(dataset), "--candidate", "community-1"],
+        )
+
+    assert result.exit_code == 0
+    persisted = json.loads((dataset / "runs" / "diarization" / "community-1" / "result.json").read_text())
+    assert persisted["status"] == "failed"
+    assert persisted["error"] == "gated model"
 
 
 def test_prepare_rejects_missing_audio(tmp_path: Path) -> None:
@@ -353,6 +451,31 @@ def test_report_rejects_stale_evaluation_checksums(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "run checksum mismatch" in result.output
+
+
+def test_report_preserves_asr_only_datasets_without_speaker_reference(tmp_path: Path) -> None:
+    dataset, _audio = _accepted_dataset(tmp_path)
+    run_dir = dataset / "runs" / "baseline"
+    run_dir.mkdir()
+    manifest = _manifest(dataset)
+    (run_dir / "manifest.json").write_text(json.dumps(asdict(manifest)), encoding="utf-8")
+    (run_dir / "evaluation.json").write_text(
+        json.dumps(
+            {
+                "source_sha256": manifest.source_sha256,
+                "reference_sha256": manifest.reference_sha256,
+                "vocabulary_sha256": manifest.vocabulary_sha256,
+                "metrics": _valid_metrics(),
+                "rtf": 0.5,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["benchmark", "report", "--dataset", str(dataset)])
+
+    assert result.exit_code == 0
+    assert (dataset / "report.md").read_text(encoding="utf-8").startswith("# ASR benchmark report")
 
 
 def test_evaluate_asr_uses_source_audio_duration_for_rtf(

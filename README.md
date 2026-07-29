@@ -121,7 +121,7 @@ audio-transcribe learn corrected-transcript.md
 audio-transcribe process recording.m4a --json
 ```
 
-### Private ASR benchmarks
+### Private ASR and diarization benchmarks
 
 Benchmark inputs and outputs stay in an explicitly selected private dataset directory. `prepare` imports the current note only as an editable draft and creates a draft vocabulary. Before running candidates, accept the transcript as `reference-transcript.md`, set `reference_status` and `reference_sha256`, review `vocabulary.txt`, set `vocabulary_status` and `vocabulary_sha256`, and add explicit `models.baseline` and `models.russian` definitions to `benchmark.json`.
 
@@ -133,9 +133,14 @@ audio-transcribe benchmark run-asr --dataset private-benchmark --candidate russi
 audio-transcribe benchmark evaluate-asr --dataset private-benchmark
 audio-transcribe benchmark report --dataset private-benchmark
 audio-transcribe benchmark run-asr --dataset private-benchmark --candidate winner-context
+audio-transcribe benchmark run-diarization --dataset private-benchmark --candidate pyannote-3.1
+audio-transcribe benchmark run-diarization --dataset private-benchmark --candidate community-1
+audio-transcribe benchmark run-diarization --dataset private-benchmark --candidate community-1-exclusive
+audio-transcribe benchmark evaluate-diarization --dataset private-benchmark
+audio-transcribe benchmark report --dataset private-benchmark
 ```
 
-The four candidates are the generic baseline, the baseline with reviewed `vocabulary.txt` passed as Whisper's `initial_prompt`, the explicitly configured Russian model, and the initial winner retested with previous-text context. Runs, evaluations, and the ranking consumed by `winner-context` remain bound to the accepted audio, reference, and vocabulary checksums; runtime forecasts use the probed source-audio duration shared by every candidate. Legacy private runs without `vocabulary_sha256` are deliberately rejected: accept and checksum the vocabulary, then rerun the candidate and evaluation instead of migrating unbound evidence silently. These commands do not change the production model or backend defaults.
+The four ASR candidates are the generic baseline, the baseline with reviewed `vocabulary.txt` passed as Whisper's `initial_prompt`, the explicitly configured Russian model, and the initial winner retested with previous-text context. Diarization requires an accepted `reference-speakers.json` and the frozen winning aligned-ASR checksum, then compares pyannote 3.1, Community-1, and Community-1 exclusive word assignment. Runs and evaluations remain bound to the accepted audio, transcript, vocabulary, aligned ASR, and speaker-reference checksums. The combined report ranks safety-eligible candidates by DER, confusion, word-speaker accuracy, fragmentation, and total ASR+alignment+diarization runtime, with 30/60/120-minute forecasts and a 2× gate against the original ASR+alignment+pyannote 3.1 baseline. Failed gated-model access is retained without deleting successful sibling runs. These commands do not change the production model or backend defaults.
 
 ### Profiles, resume, and templates
 

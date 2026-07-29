@@ -151,6 +151,23 @@ class EvaluatedAsrRun:
 
 
 @dataclass(frozen=True)
+class EvaluatedDiarizationRun:
+    """One checksum-bound diarization run paired with optional quality metrics."""
+
+    candidate_name: str
+    source_sha256: str
+    aligned_asr_sha256: str
+    speaker_reference_sha256: str
+    model: str
+    exclusive: bool
+    time_s: float
+    peak_rss_mb: float
+    status: str
+    error: str | None
+    metrics: DiarizationMetrics | None
+
+
+@dataclass(frozen=True)
 class Forecast:
     """Linear runtime forecast with a symmetric planning range."""
 

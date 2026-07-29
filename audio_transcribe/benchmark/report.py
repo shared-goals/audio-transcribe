@@ -10,6 +10,7 @@ from typing import Any
 
 from audio_transcribe.benchmark.models import (
     EvaluatedAsrRun,
+    EvaluatedDiarizationRun,
     Forecast,
     Ranking,
     validate_evaluated_asr_run,
@@ -232,7 +233,182 @@ def _markdown_report(
     return "\n".join(lines)
 
 
-def write_report(dataset: Path, results: tuple[EvaluatedAsrRun, ...]) -> tuple[Path, Path]:
+def _validate_diarization_run(run: EvaluatedDiarizationRun) -> None:
+    if (
+        run.status not in {"completed", "failed"}
+        or not isfinite(run.time_s)
+        or run.time_s < 0.0
+        or not isfinite(run.peak_rss_mb)
+        or run.peak_rss_mb < 0.0
+    ):
+        raise ValueError("invalid diarization run")
+    if run.status == "completed":
+        if run.error is not None or run.metrics is None or run.time_s <= 0.0:
+            raise ValueError("invalid completed diarization run")
+    elif not run.error or run.metrics is not None:
+        raise ValueError("invalid failed diarization run")
+
+
+def _rank_diarization(
+    results: tuple[EvaluatedDiarizationRun, ...],
+    combined_times: dict[str, float],
+    baseline_combined: float,
+) -> Ranking:
+    names = tuple(run.candidate_name for run in results)
+    if len(names) != len(set(names)):
+        raise ValueError("duplicate diarization candidate name")
+    for run in results:
+        _validate_diarization_run(run)
+    completed = tuple(run for run in results if run.status == "completed" and run.metrics is not None)
+    baseline = next((run for run in completed if run.candidate_name == "pyannote-3.1"), None)
+    if baseline is None or baseline.metrics is None:
+        raise ValueError("successful pyannote-3.1 baseline is required")
+
+    def eligible(run: EvaluatedDiarizationRun) -> bool:
+        assert run.metrics is not None
+        assert baseline.metrics is not None
+        return (
+            run.metrics.missed_speech_s <= baseline.metrics.missed_speech_s
+            and run.metrics.false_alarm_s <= baseline.metrics.false_alarm_s
+        )
+
+    def key(run: EvaluatedDiarizationRun) -> tuple[bool, float, float, float, int, float, str]:
+        assert run.metrics is not None
+        return (
+            not eligible(run),
+            run.metrics.der,
+            run.metrics.confusion_s,
+            -run.metrics.word_speaker_accuracy,
+            run.metrics.fragmented_turns,
+            combined_times[run.candidate_name],
+            run.candidate_name,
+        )
+
+    ordered = tuple(sorted(completed, key=key))
+    default = next(
+        run
+        for run in ordered
+        if eligible(run) and combined_times[run.candidate_name] <= baseline_combined * _DEFAULT_RUNTIME_LIMIT
+    )
+    quality = next(run for run in ordered if eligible(run))
+    optional = quality.candidate_name if quality.candidate_name != default.candidate_name else None
+    reasons = (
+        f"{default.candidate_name} is the best safety-eligible diarization candidate within the "
+        "2.00x combined baseline.",
+    )
+    return Ranking(default.candidate_name, optional, reasons)
+
+
+def _combined_report(
+    asr_results: tuple[EvaluatedAsrRun, ...],
+    diarization_results: tuple[EvaluatedDiarizationRun, ...],
+    selected_asr_name: str,
+    audio_duration_s: float,
+) -> tuple[dict[str, Any], str]:
+    if not isfinite(audio_duration_s) or audio_duration_s <= 0.0:
+        raise ValueError("audio duration must be finite and positive")
+    selected = next(
+        (run for run in asr_results if run.manifest.candidate_name == selected_asr_name and _successful(run)),
+        None,
+    )
+    if selected is None:
+        raise ValueError("successful selected ASR run is required")
+    original_asr = next(
+        (run for run in asr_results if run.manifest.candidate_name == "baseline" and _successful(run)),
+        None,
+    )
+    if original_asr is None:
+        raise ValueError("successful original ASR baseline is required")
+    selected_asr_time = _total_time(selected)
+    combined_times = {run.candidate_name: selected_asr_time + run.time_s for run in diarization_results}
+    baseline_diarization = next(
+        (run for run in diarization_results if run.candidate_name == "pyannote-3.1" and run.status == "completed"),
+        None,
+    )
+    if baseline_diarization is None:
+        raise ValueError("successful pyannote-3.1 baseline is required")
+    baseline_combined = _total_time(original_asr) + baseline_diarization.time_s
+    ranking = _rank_diarization(diarization_results, combined_times, baseline_combined)
+    records: list[dict[str, Any]] = []
+    rows: list[str] = []
+    for run in diarization_results:
+        successful = run.status == "completed" and run.metrics is not None
+        combined = combined_times[run.candidate_name]
+        rtf = combined / audio_duration_s if successful else None
+        forecasts = [asdict(forecast(rtf, duration)) for duration in _FORECAST_DURATIONS] if rtf else []
+        records.append(
+            {
+                "candidate": run.candidate_name,
+                "source_sha256": run.source_sha256,
+                "aligned_asr_sha256": run.aligned_asr_sha256,
+                "speaker_reference_sha256": run.speaker_reference_sha256,
+                "model": run.model,
+                "exclusive": run.exclusive,
+                "metrics": asdict(run.metrics) if run.metrics else None,
+                "diarization_time_s": run.time_s,
+                "combined_time_s": combined,
+                "combined_baseline_ratio": combined / baseline_combined if successful else None,
+                "forecasts": forecasts,
+                "peak_rss_mb": run.peak_rss_mb,
+                "status": run.status,
+                "error": run.error,
+            }
+        )
+        metrics = run.metrics
+        by_duration = {item["duration_minutes"]: Forecast(**item) for item in forecasts}
+        status = run.status if not run.error else f"{run.status}: {run.error}"
+        values = (
+            run.candidate_name,
+            _format_number(metrics.der if metrics else None),
+            _format_number(metrics.confusion_s if metrics else None, " s"),
+            _format_number(metrics.word_speaker_accuracy if metrics else None),
+            str(metrics.fragmented_turns) if metrics else "—",
+            _format_number(run.time_s, " s"),
+            _format_number(combined, " s"),
+            _format_number(combined / baseline_combined if successful else None, "x"),
+            _format_forecast(by_duration.get(30)),
+            _format_forecast(by_duration.get(60)),
+            _format_forecast(by_duration.get(120)),
+            _format_number(run.peak_rss_mb, " MB"),
+            status,
+        )
+        rows.append("| " + " | ".join(_markdown_cell(value) for value in values) + " |")
+    header = (
+        "| Candidate | DER | Confusion | Word speaker accuracy | Fragmented turns | Diarization runtime | "
+        "Combined runtime | Combined baseline ratio | 30 min forecast | 60 min forecast | 120 min forecast | "
+        "Peak RAM | Status |"
+    )
+    markdown = "\n".join(
+        (
+            "# Combined ASR and diarization benchmark report",
+            "",
+            f"Selected ASR: **{selected_asr_name}**.",
+            "",
+            header,
+            "| " + " | ".join("---" for _ in range(13)) + " |",
+            *rows,
+            "",
+            "## Recommendation",
+            "",
+            f"Default diarization winner: **{ranking.default_winner}**.",
+            "",
+            *(f"- {reason}" for reason in ranking.reasons),
+            "",
+            "Forecasts include ASR, alignment, and diarization and are linear planning estimates with a ±15% range.",
+            "",
+        )
+    )
+    return {"diarization_ranking": asdict(ranking), "diarization_results": records}, markdown
+
+
+def write_report(
+    dataset: Path,
+    results: tuple[EvaluatedAsrRun, ...],
+    *,
+    diarization_results: tuple[EvaluatedDiarizationRun, ...] | None = None,
+    selected_asr_name: str | None = None,
+    audio_duration_s: float | None = None,
+) -> tuple[Path, Path]:
     """Atomically write machine-readable metrics and a human-readable comparison."""
     ranking = rank_asr(results, "baseline")
     baseline = next(run for run in results if run.manifest.candidate_name == "baseline" and _successful(run))
@@ -245,8 +421,13 @@ def write_report(dataset: Path, results: tuple[EvaluatedAsrRun, ...]) -> tuple[P
     expanded_dataset = dataset.expanduser().resolve()
     metrics_path = expanded_dataset / "metrics.json"
     report_path = expanded_dataset / "report.md"
-    metrics_content = json.dumps(aggregate, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
     report_content = _markdown_report(results, baseline_total, ranking)
+    if diarization_results is not None:
+        if selected_asr_name is None or audio_duration_s is None:
+            raise ValueError("combined report requires selected ASR and audio duration")
+        combined, report_content = _combined_report(results, diarization_results, selected_asr_name, audio_duration_s)
+        aggregate.update(combined)
+    metrics_content = json.dumps(aggregate, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
     atomic_write_text(metrics_path, metrics_content)
     atomic_write_text(report_path, report_content)
     return metrics_path, report_path
