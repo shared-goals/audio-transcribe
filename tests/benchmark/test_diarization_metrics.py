@@ -9,6 +9,8 @@ import pytest
 from audio_transcribe.benchmark.diarization_metrics import evaluate_diarization
 from audio_transcribe.benchmark.models import SpeakerTurn
 
+_HUGE_INT = 10**10000
+
 
 def test_swapped_anonymous_labels_are_not_confusion() -> None:
     reference = (
@@ -180,6 +182,28 @@ def test_normalizes_speaker_labels_before_mapping_and_word_accuracy() -> None:
 
     assert metrics.label_mapping == {"p0": "a", "p1": "b"}
     assert metrics.word_speaker_accuracy == 1.0
+
+
+@pytest.mark.parametrize("field", ["collar", "turn", "word"])
+def test_huge_integer_numeric_inputs_raise_value_error(field: str) -> None:
+    reference = (
+        SpeakerTurn(0.0, 1.0, "a"),
+        SpeakerTurn(1.0, 2.0, "b"),
+    )
+    collar: Any = 0.0
+    words: Any = []
+    if field == "collar":
+        collar = _HUGE_INT
+    elif field == "turn":
+        reference = (
+            SpeakerTurn(0.0, _HUGE_INT, "a"),
+            SpeakerTurn(1.0, 2.0, "b"),
+        )
+    else:
+        words = [{"start": 0.0, "end": _HUGE_INT, "speaker": "p0"}]
+
+    with pytest.raises(ValueError):
+        evaluate_diarization(reference, (), aligned_words=words, collar_s=collar)
 
 
 @pytest.mark.parametrize(

@@ -12,6 +12,18 @@ from audio_transcribe.benchmark.models import DiarizationMetrics, SpeakerTurn
 _FRAGMENT_THRESHOLD_S = 0.5
 
 
+def _coerce_finite_float(value: object, *, name: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(f"{name} must be a finite number")
+    try:
+        normalized = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be a finite number") from exc
+    if not isfinite(normalized):
+        raise ValueError(f"{name} must be a finite number")
+    return normalized
+
+
 def _normalize_turns(
     turns: object,
     *,
@@ -25,20 +37,9 @@ def _normalize_turns(
     for turn in turns:
         if not isinstance(turn, SpeakerTurn):
             raise ValueError(f"invalid {name} turn")
-        start = turn.start_s
-        end = turn.end_s
-        if (
-            not isinstance(start, (int, float))
-            or isinstance(start, bool)
-            or not isinstance(end, (int, float))
-            or isinstance(end, bool)
-            or not isfinite(start)
-            or not isfinite(end)
-            or start < 0.0
-            or end <= start
-            or not isinstance(turn.speaker, str)
-            or not turn.speaker.strip()
-        ):
+        start = _coerce_finite_float(turn.start_s, name=f"{name} turn start")
+        end = _coerce_finite_float(turn.end_s, name=f"{name} turn end")
+        if start < 0.0 or end <= start or not isinstance(turn.speaker, str) or not turn.speaker.strip():
             raise ValueError(f"invalid {name} turn")
         speaker = turn.speaker.strip()
         speakers.add(speaker)
@@ -57,26 +58,17 @@ def _normalize_words(aligned_words: object) -> tuple[Mapping[str, object], ...]:
     for word in aligned_words:
         if not isinstance(word, Mapping):
             raise ValueError("invalid aligned word")
-        start = word.get("start")
-        end = word.get("end")
-        if (
-            not isinstance(start, (int, float))
-            or isinstance(start, bool)
-            or not isinstance(end, (int, float))
-            or isinstance(end, bool)
-            or not isfinite(float(start))
-            or not isfinite(float(end))
-            or float(start) < 0.0
-            or float(end) <= float(start)
-        ):
+        start = _coerce_finite_float(word.get("start"), name="aligned word start")
+        end = _coerce_finite_float(word.get("end"), name="aligned word end")
+        if start < 0.0 or end <= start:
             raise ValueError("invalid aligned word timestamps")
         speaker = word.get("speaker")
         if speaker is not None and (not isinstance(speaker, str) or not speaker.strip()):
             raise ValueError("invalid aligned word speaker")
         normalized_words.append(
             {
-                "start": float(start),
-                "end": float(end),
+                "start": start,
+                "end": end,
                 "speaker": speaker.strip() if isinstance(speaker, str) else None,
             }
         )
@@ -159,7 +151,8 @@ def evaluate_diarization(
     collar_s: float = 0.0,
 ) -> DiarizationMetrics:
     """Score a two-speaker prediction after choosing the best anonymous-label permutation."""
-    if not isinstance(collar_s, (int, float)) or isinstance(collar_s, bool) or not isfinite(collar_s) or collar_s < 0.0:
+    normalized_collar = _coerce_finite_float(collar_s, name="collar_s")
+    if normalized_collar < 0.0:
         raise ValueError("collar_s must be finite and non-negative")
     normalized_reference, reference_speakers = _normalize_turns(
         reference,
@@ -177,11 +170,14 @@ def evaluate_diarization(
     raw_boundaries = reference_boundaries | {
         edge for turn in normalized_prediction for edge in (turn.start_s, turn.end_s)
     }
-    if collar_s > 0.0:
+    if normalized_collar > 0.0:
         raw_boundaries |= {
             collar_edge
             for boundary in reference_boundaries
-            for collar_edge in (max(0.0, boundary - collar_s), boundary + collar_s)
+            for collar_edge in (
+                max(0.0, boundary - normalized_collar),
+                boundary + normalized_collar,
+            )
         }
     boundaries = tuple(sorted(raw_boundaries))
 
@@ -193,7 +189,7 @@ def evaluate_diarization(
             mapping,
             boundaries,
             reference_boundaries,
-            float(collar_s),
+            normalized_collar,
         )
         scored.append((sum(components[:3]), tuple(mapping.items()), mapping, components))
     _, _, best_mapping, (missed, false_alarm, confusion, reference_speech) = min(scored)
