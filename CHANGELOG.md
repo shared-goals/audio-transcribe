@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file. Format foll
 - Private ASR benchmark CLI for reference preparation, candidate runs, evaluation, and reports
 
 ### Fixed
+- Require finite positive audio duration in diarization references and normalize speaker IDs before validation
 - Reject malformed ASR winner candidate identities as clean CLI evidence errors before model launch
 - Require completed, identity-matching, valid-metrics evidence before rerunning the ASR winner with context
 - Reject stale winner-context rankings and legacy ASR run manifests without a required vocabulary checksum

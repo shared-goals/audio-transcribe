@@ -42,6 +42,7 @@ class SpeakerReference:
 
     source_sha256: str
     aligned_asr_sha256: str
+    audio_duration_s: float
     turns: tuple[SpeakerTurn, ...]
 
 

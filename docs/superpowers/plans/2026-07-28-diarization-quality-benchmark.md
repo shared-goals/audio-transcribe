@@ -41,7 +41,7 @@
 
 **Interfaces:**
 - Produces: `SpeakerTurn(start_s: float, end_s: float, speaker: str)`.
-- Produces: `SpeakerReference(source_sha256: str, aligned_asr_sha256: str, turns: tuple[SpeakerTurn, ...])`.
+- Produces: `SpeakerReference(source_sha256: str, aligned_asr_sha256: str, audio_duration_s: float, turns: tuple[SpeakerTurn, ...])`.
 - Produces: `load_speaker_reference(path: Path) -> SpeakerReference`.
 
 - [ ] **Step 1: Write failing validation tests**
@@ -50,7 +50,7 @@
 def test_load_speaker_reference_accepts_two_speakers(tmp_path: Path) -> None:
     path = tmp_path / "reference-speakers.json"
     path.write_text(
-        '{"source_sha256":"audio","aligned_asr_sha256":"asr","turns":['
+        '{"source_sha256":"audio","aligned_asr_sha256":"asr","audio_duration_s":4.0,"turns":['
         '{"start":0.0,"end":2.0,"speaker":"speaker_a"},'
         '{"start":2.0,"end":4.0,"speaker":"speaker_b"}]}',
         encoding="utf-8",

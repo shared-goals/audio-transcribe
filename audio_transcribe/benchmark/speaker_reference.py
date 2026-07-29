@@ -38,9 +38,10 @@ def load_speaker_reference(path: Path) -> SpeakerReference:
     if not isinstance(raw_turns, list):
         raise ValueError("speaker reference turns must be a list")
 
-    raw_duration = payload.get("audio_duration_s")
-    audio_duration_s = _number(raw_duration, "audio duration") if raw_duration is not None else None
-    if audio_duration_s is not None and audio_duration_s <= 0.0:
+    if "audio_duration_s" not in payload:
+        raise ValueError("speaker reference audio duration is required")
+    audio_duration_s = _number(payload["audio_duration_s"], "audio duration")
+    if audio_duration_s <= 0.0:
         raise ValueError("speaker reference audio duration must be positive")
 
     turns: list[SpeakerTurn] = []
@@ -54,9 +55,10 @@ def load_speaker_reference(path: Path) -> SpeakerReference:
         speaker = raw_turn.get("speaker")
         if not isinstance(speaker, str) or not speaker.strip():
             raise ValueError(f"speaker reference turn {index} speaker must be non-empty")
+        speaker = speaker.strip()
         if start_s < 0.0 or end_s <= start_s:
             raise ValueError(f"speaker reference turn {index} must have positive duration")
-        if audio_duration_s is not None and end_s > audio_duration_s:
+        if end_s > audio_duration_s:
             raise ValueError(f"speaker reference turn {index} exceeds audio duration")
         key = (start_s, end_s)
         if previous_key is not None and key < previous_key:
@@ -69,4 +71,4 @@ def load_speaker_reference(path: Path) -> SpeakerReference:
 
     if len({turn.speaker for turn in turns}) != 2:
         raise ValueError("speaker reference must contain exactly two speakers")
-    return SpeakerReference(source_sha256, aligned_asr_sha256, tuple(turns))
+    return SpeakerReference(source_sha256, aligned_asr_sha256, audio_duration_s, tuple(turns))
