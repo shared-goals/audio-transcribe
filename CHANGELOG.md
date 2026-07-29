@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file. Format foll
 - Private ASR benchmark CLI for reference preparation, candidate runs, evaluation, and reports
 
 ### Fixed
+- Invalidate benchmark evaluations before artifact replacement so partial writes cannot preserve stale trusted evidence
 - Bind ASR evaluations and winner-context reports to exact candidate results and invalidate them on rerun
 - Bind diarization evaluations to exact run results, recompute the current ASR winner, and reject malformed quality evidence
 - Convert oversized diarization benchmark numeric inputs into stable validation errors

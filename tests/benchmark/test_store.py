@@ -8,8 +8,9 @@ from unittest.mock import patch
 
 import pytest
 
-from audio_transcribe.benchmark.models import RunManifest
-from audio_transcribe.benchmark.store import write_run
+from audio_transcribe.benchmark.cli import _evaluated_runs
+from audio_transcribe.benchmark.models import DiarizationCandidate, DiarizationRunResult, RunManifest
+from audio_transcribe.benchmark.store import write_diarization_run, write_run
 from audio_transcribe.util import atomic_write_text
 
 
@@ -101,6 +102,86 @@ def test_write_run_invalidates_previous_evaluation_after_replacing_result(tmp_pa
     write_run(dataset, _manifest(), {"segments": [{"text": "new result"}]})
 
     assert not evaluation.exists()
+
+
+def test_write_run_invalidates_evaluation_before_partial_artifact_failure(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path)
+    run_dir = dataset / "runs" / "baseline"
+    run_dir.mkdir(parents=True)
+    evaluation = run_dir / "evaluation.json"
+    evaluation.write_text('{"result_sha256":"old"}', encoding="utf-8")
+    (run_dir / "result.json").write_text('{"segments":[{"text":"old"}]}', encoding="utf-8")
+    writes = 0
+
+    def write_manifest_then_fail(path: Path, content: str) -> None:
+        nonlocal writes
+        writes += 1
+        if writes == 2:
+            raise OSError("result write failed")
+        atomic_write_text(path, content)
+
+    with (
+        patch("audio_transcribe.benchmark.store.atomic_write_text", side_effect=write_manifest_then_fail),
+        pytest.raises(OSError, match="result write failed"),
+    ):
+        write_run(dataset, _manifest(), {"segments": [{"text": "new"}]})
+
+    assert json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))["git_commit"] == "abc123"
+    assert json.loads((run_dir / "result.json").read_text(encoding="utf-8"))["segments"][0]["text"] == "old"
+    assert not evaluation.exists()
+    benchmark = json.loads((dataset / "benchmark.json").read_text(encoding="utf-8"))
+    with pytest.raises(ValueError, match="no evaluated ASR runs"):
+        _evaluated_runs(dataset, benchmark)
+
+
+def test_write_diarization_run_invalidates_evaluation_before_artifact_failure(tmp_path: Path) -> None:
+    dataset = tmp_path / "benchmark"
+    run_dir = dataset / "runs" / "diarization" / "pyannote-3.1"
+    run_dir.mkdir(parents=True)
+    evaluation = run_dir / "evaluation.json"
+    evaluation.write_text('{"result_sha256":"old"}', encoding="utf-8")
+    result_path = run_dir / "result.json"
+    result_path.write_text('{"status":"completed","old":true}', encoding="utf-8")
+    run = DiarizationRunResult(
+        DiarizationCandidate("pyannote-3.1", "pyannote/speaker-diarization-3.1", False),
+        (),
+        (),
+        1.0,
+        100.0,
+        "completed",
+        None,
+    )
+
+    with (
+        patch("audio_transcribe.benchmark.store.atomic_write_text", side_effect=OSError("result write failed")),
+        pytest.raises(OSError, match="result write failed"),
+    ):
+        write_diarization_run(
+            dataset,
+            run,
+            source_sha256="audio",
+            aligned_asr_sha256="asr",
+            speaker_reference_sha256="speakers",
+        )
+
+    assert json.loads(result_path.read_text(encoding="utf-8"))["old"] is True
+    assert not evaluation.exists()
+
+
+def test_write_run_keeps_previous_evaluation_when_new_payload_cannot_serialize(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path)
+    evaluation = dataset / "runs" / "baseline" / "evaluation.json"
+    evaluation.parent.mkdir(parents=True)
+    evaluation.write_text('{"result_sha256":"still-valid"}', encoding="utf-8")
+
+    with (
+        patch("audio_transcribe.benchmark.store.atomic_write_text") as atomic_write,
+        pytest.raises(ValueError, match="Out of range float values"),
+    ):
+        write_run(dataset, _manifest(), {"score": float("nan")})
+
+    atomic_write.assert_not_called()
+    assert evaluation.is_file()
 
 
 def test_write_run_serializes_both_payloads_before_first_write(tmp_path: Path) -> None:

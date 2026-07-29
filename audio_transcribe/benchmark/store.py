@@ -35,9 +35,9 @@ def write_run(dataset: Path, manifest: RunManifest, result: dict[str, Any]) -> t
     run_dir = expanded_dataset / "runs" / manifest.candidate_name
     manifest_path = run_dir / "manifest.json"
     result_path = run_dir / "result.json"
+    (run_dir / "evaluation.json").unlink(missing_ok=True)
     atomic_write_text(manifest_path, manifest_content)
     atomic_write_text(result_path, result_content)
-    (run_dir / "evaluation.json").unlink(missing_ok=True)
     return manifest_path, result_path
 
 
@@ -75,6 +75,7 @@ def write_diarization_run(
         "error": result.error,
     }
     path = dataset.expanduser().resolve() / "runs" / "diarization" / result.candidate.name / "result.json"
-    atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+    content = json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
     (path.parent / "evaluation.json").unlink(missing_ok=True)
+    atomic_write_text(path, content)
     return path
