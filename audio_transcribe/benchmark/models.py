@@ -60,6 +60,28 @@ class DiarizationMetrics:
 
 
 @dataclass(frozen=True)
+class DiarizationCandidate:
+    """One isolated pyannote model and speaker-assignment configuration."""
+
+    name: str
+    model_id: str
+    exclusive: bool
+
+
+@dataclass(frozen=True)
+class DiarizationRunResult:
+    """Outcome and resource measurements from one diarization candidate."""
+
+    candidate: DiarizationCandidate
+    turns: tuple[SpeakerTurn, ...]
+    word_assignments: tuple[dict[str, Any], ...]
+    time_s: float
+    peak_rss_mb: float
+    status: str
+    error: str | None
+
+
+@dataclass(frozen=True)
 class AsrMetrics:
     """Immutable quality measurements for one candidate ASR transcript."""
 

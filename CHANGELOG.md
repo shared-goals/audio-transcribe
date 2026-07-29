@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file. Format foll
 ## [Unreleased]
 
 ### Added
+- pyannote 3.1 and Community-1 benchmark adapters with exclusive speaker assignment
 - Permutation-invariant DER and word-level speaker metrics
 - Private two-speaker reference format for diarization benchmarks
 - Private reference dataset preparation for reproducible ASR benchmarks
