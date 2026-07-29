@@ -279,7 +279,16 @@ def test_write_report_combines_diarization_quality_runtime_and_forecasts(tmp_pat
     assert [item["duration_minutes"] for item in candidate["forecasts"]] == [30, 60, 120]
     report = report_path.read_text(encoding="utf-8")
     for heading in (
+        "ASR candidate",
+        "WER",
+        "CER",
+        "Preprocess",
+        "Transcribe",
+        "Align",
+        "ASR total",
         "DER",
+        "Missed speech",
+        "False alarm",
         "Confusion",
         "Word speaker accuracy",
         "Fragmented turns",
@@ -290,6 +299,9 @@ def test_write_report_combines_diarization_quality_runtime_and_forecasts(tmp_pat
         "120 min forecast",
     ):
         assert heading in report
+    assert "Audio SHA-256: `audio-sha`" in report
+    assert "Aligned ASR SHA-256: `aligned-sha`" in report
+    assert "Speaker reference SHA-256: `speaker-sha`" in report
 
 
 @pytest.mark.parametrize(

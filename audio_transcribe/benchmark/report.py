@@ -316,6 +316,7 @@ def _combined_report(
     )
     if selected is None:
         raise ValueError("successful selected ASR run is required")
+    assert selected.metrics is not None
     original_asr = next(
         (run for run in asr_results if run.manifest.candidate_name == "baseline" and _successful(run)),
         None,
@@ -363,6 +364,8 @@ def _combined_report(
         values = (
             run.candidate_name,
             _format_number(metrics.der if metrics else None),
+            _format_number(metrics.missed_speech_s if metrics else None, " s"),
+            _format_number(metrics.false_alarm_s if metrics else None, " s"),
             _format_number(metrics.confusion_s if metrics else None, " s"),
             _format_number(metrics.word_speaker_accuracy if metrics else None),
             str(metrics.fragmented_turns) if metrics else "—",
@@ -377,19 +380,44 @@ def _combined_report(
         )
         rows.append("| " + " | ".join(_markdown_cell(value) for value in values) + " |")
     header = (
-        "| Candidate | DER | Confusion | Word speaker accuracy | Fragmented turns | Diarization runtime | "
-        "Combined runtime | Combined baseline ratio | 30 min forecast | 60 min forecast | 120 min forecast | "
-        "Peak RAM | Status |"
+        "| Candidate | DER | Missed speech | False alarm | Confusion | Word speaker accuracy | Fragmented turns | "
+        "Diarization runtime | Combined runtime | Combined baseline ratio | 30 min forecast | 60 min forecast | "
+        "120 min forecast | Peak RAM | Status |"
     )
+    stage_times = selected.manifest.stage_times_s
+    evidence = diarization_results[0]
     markdown = "\n".join(
         (
             "# Combined ASR and diarization benchmark report",
             "",
             f"Selected ASR: **{selected_asr_name}**.",
             "",
+            "| ASR candidate | WER | CER | Preprocess | Transcribe | Align | ASR total | Peak ASR RAM |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| "
+            + " | ".join(
+                (
+                    selected_asr_name,
+                    _format_number(selected.metrics.wer),
+                    _format_number(selected.metrics.cer),
+                    _format_number(stage_times.get("preprocess"), " s"),
+                    _format_number(stage_times.get("transcribe"), " s"),
+                    _format_number(stage_times.get("align"), " s"),
+                    _format_number(selected_asr_time, " s"),
+                    _format_number(selected.manifest.peak_rss_mb, " MB"),
+                )
+            )
+            + " |",
+            "",
             header,
-            "| " + " | ".join("---" for _ in range(13)) + " |",
+            "| " + " | ".join("---" for _ in range(15)) + " |",
             *rows,
+            "",
+            "## Evidence",
+            "",
+            f"- Audio SHA-256: `{evidence.source_sha256}`",
+            f"- Aligned ASR SHA-256: `{evidence.aligned_asr_sha256}`",
+            f"- Speaker reference SHA-256: `{evidence.speaker_reference_sha256}`",
             "",
             "## Recommendation",
             "",
