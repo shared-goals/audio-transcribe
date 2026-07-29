@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file. Format foll
 ## [Unreleased]
 
 ### Added
+- Permutation-invariant DER and word-level speaker metrics
 - Private two-speaker reference format for diarization benchmarks
 - Private reference dataset preparation for reproducible ASR benchmarks
 - WER, CER, terminology, missed-speech, hallucination, and VAD-boundary metrics

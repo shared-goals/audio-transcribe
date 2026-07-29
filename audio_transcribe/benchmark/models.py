@@ -47,6 +47,19 @@ class SpeakerReference:
 
 
 @dataclass(frozen=True)
+class DiarizationMetrics:
+    """Permutation-invariant timeline and word-level diarization measurements."""
+
+    der: float
+    missed_speech_s: float
+    false_alarm_s: float
+    confusion_s: float
+    word_speaker_accuracy: float
+    fragmented_turns: int
+    label_mapping: dict[str, str]
+
+
+@dataclass(frozen=True)
 class AsrMetrics:
     """Immutable quality measurements for one candidate ASR transcript."""
 
