@@ -158,6 +158,15 @@ def _candidate_definition(
                 or not manifest_candidate
             ):
                 raise ValueError("winner-context winner evidence is invalid")
+            result_sha256 = result.get("result_sha256")
+            result_path = dataset / "runs" / result_candidate / "result.json"
+            if (
+                result_candidate not in _CANDIDATES
+                or not isinstance(result_sha256, str)
+                or not result_path.is_file()
+                or _sha256(result_path) != result_sha256
+            ):
+                raise ValueError("winner-context result checksum mismatch")
             if result_candidate == winner_name or manifest_candidate == winner_name:
                 metrics_payload = result.get("metrics")
                 if (
@@ -263,7 +272,8 @@ def _evaluated_runs(dataset: Path, dataset_manifest: dict[str, Any]) -> tuple[Ev
     for candidate_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
         evaluation_path = candidate_dir / "evaluation.json"
         manifest_path = candidate_dir / "manifest.json"
-        if not evaluation_path.is_file() or not manifest_path.is_file():
+        result_path = candidate_dir / "result.json"
+        if not evaluation_path.is_file() or not manifest_path.is_file() or not result_path.is_file():
             continue
         manifest = _run_manifest(json.loads(manifest_path.read_text(encoding="utf-8")))
         evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
@@ -280,12 +290,16 @@ def _evaluated_runs(dataset: Path, dataset_manifest: dict[str, Any]) -> tuple[Ev
         )
         if run_checksums != expected or evaluation_checksums != expected:
             raise ValueError(f"benchmark run checksum mismatch: {manifest.candidate_name}")
+        result_sha256 = _sha256(result_path)
+        if evaluation.get("result_sha256") != result_sha256:
+            raise ValueError(f"ASR result checksum mismatch: {manifest.candidate_name}")
         metrics_payload = evaluation.get("metrics")
         values.append(
             EvaluatedAsrRun(
                 manifest,
                 _asr_metrics(metrics_payload) if isinstance(metrics_payload, dict) else None,
                 evaluation.get("rtf"),
+                result_sha256,
             )
         )
     if not values:
@@ -500,6 +514,7 @@ def evaluate_asr_command(
                 "source_sha256": dataset_manifest["audio_sha256"],
                 "reference_sha256": dataset_manifest["reference_sha256"],
                 "vocabulary_sha256": dataset_manifest["vocabulary_sha256"],
+                "result_sha256": _sha256(result_path),
                 "metrics": asdict(metrics) if metrics is not None else None,
                 "rtf": rtf,
             }

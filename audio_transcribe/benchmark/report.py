@@ -138,6 +138,7 @@ def _result_record(
     )
     return {
         "candidate": run.manifest.candidate_name,
+        "result_sha256": run.result_sha256,
         "manifest": asdict(run.manifest),
         "metrics": asdict(run.metrics) if run.metrics is not None else None,
         "total_time_s": total_time,

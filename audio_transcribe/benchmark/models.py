@@ -148,6 +148,7 @@ class EvaluatedAsrRun:
     manifest: RunManifest
     metrics: AsrMetrics | None
     rtf: float | None
+    result_sha256: str
 
 
 @dataclass(frozen=True)
@@ -252,6 +253,8 @@ def validate_diarization_metrics(metrics: DiarizationMetrics) -> None:
 def validate_evaluated_asr_run(run: EvaluatedAsrRun) -> None:
     """Enforce the completed/failed metrics and real-time-factor state machine."""
     validate_run_manifest(run.manifest)
+    if len(run.result_sha256) != 64 or any(character not in "0123456789abcdef" for character in run.result_sha256):
+        raise ValueError("invalid benchmark run: result checksum")
     if run.manifest.status == "completed":
         if run.metrics is None or run.rtf is None or not isfinite(run.rtf) or run.rtf <= 0.0:
             raise ValueError("invalid benchmark run: completed metrics or RTF")

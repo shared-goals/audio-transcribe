@@ -79,6 +79,7 @@ def _run(
             hallucinated=hallucinated,
         ),
         rtf,
+        "a" * 64,
     )
 
 
@@ -101,6 +102,7 @@ def _failed_run(name: str) -> EvaluatedAsrRun:
         ),
         None,
         None,
+        "b" * 64,
     )
 
 
@@ -199,6 +201,7 @@ def test_write_report_preserves_failures_and_required_comparison_fields(tmp_path
     assert metrics["ranking"]["default_winner"] == "candidate"
     assert metrics["forecast_durations_minutes"] == [30, 60, 120]
     failed = next(value for value in metrics["results"] if value["candidate"] == "failed")
+    assert all(len(value["result_sha256"]) == 64 for value in metrics["results"])
     assert failed["status"] == "failed"
     assert failed["error"] == "model unavailable"
     assert failed["forecasts"] == []

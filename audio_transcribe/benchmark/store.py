@@ -37,6 +37,7 @@ def write_run(dataset: Path, manifest: RunManifest, result: dict[str, Any]) -> t
     result_path = run_dir / "result.json"
     atomic_write_text(manifest_path, manifest_content)
     atomic_write_text(result_path, result_content)
+    (run_dir / "evaluation.json").unlink(missing_ok=True)
     return manifest_path, result_path
 
 

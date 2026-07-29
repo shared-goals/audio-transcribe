@@ -92,6 +92,17 @@ def test_write_run_persists_manifest_and_result_atomically(tmp_path: Path) -> No
     assert [call.args[0] for call in atomic_write.call_args_list] == [manifest_path, result_path]
 
 
+def test_write_run_invalidates_previous_evaluation_after_replacing_result(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path)
+    evaluation = dataset / "runs" / "baseline" / "evaluation.json"
+    evaluation.parent.mkdir(parents=True)
+    evaluation.write_text('{"result_sha256":"stale"}', encoding="utf-8")
+
+    write_run(dataset, _manifest(), {"segments": [{"text": "new result"}]})
+
+    assert not evaluation.exists()
+
+
 def test_write_run_serializes_both_payloads_before_first_write(tmp_path: Path) -> None:
     """An invalid result must not leave behind an otherwise valid manifest-only run."""
     dataset = _dataset(tmp_path)

@@ -33,6 +33,13 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _candidate_result_sha(dataset: Path, name: str = "baseline") -> str:
+    result_path = dataset / "runs" / name / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.write_text(json.dumps({"segments": [], "candidate": name}), encoding="utf-8")
+    return _sha256(result_path)
+
+
 def _accepted_dataset(tmp_path: Path) -> tuple[Path, Path]:
     dataset = tmp_path / "dataset"
     dataset.mkdir()
@@ -163,6 +170,7 @@ def _diarization_dataset(tmp_path: Path, *, status: str = "accepted") -> Path:
                     "source_sha256": run_manifest.source_sha256,
                     "reference_sha256": run_manifest.reference_sha256,
                     "vocabulary_sha256": run_manifest.vocabulary_sha256,
+                    "result_sha256": _sha256(run_dir / "result.json"),
                     "metrics": metrics,
                     "rtf": 0.5,
                 }
@@ -199,7 +207,7 @@ def test_run_diarization_rejects_aligned_asr_checksum_mismatch_before_model(tmp_
         )
 
     assert result.exit_code == 1
-    assert "aligned ASR checksum mismatch" in result.output
+    assert "ASR result checksum mismatch" in result.output
 
 
 def test_run_diarization_persists_failed_model_access(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -507,6 +515,7 @@ def test_winner_context_rejects_invalid_winner_result_before_model_launch(
 ) -> None:
     dataset, _audio = _accepted_dataset(tmp_path)
     result_manifest = asdict(_manifest(dataset, **manifest_overrides))
+    result_sha256 = _candidate_result_sha(dataset)
     (dataset / "metrics.json").write_text(
         json.dumps(
             {
@@ -518,6 +527,7 @@ def test_winner_context_rejects_invalid_winner_result_before_model_launch(
                         "status": result_status,
                         "error": result_error,
                         "metrics": metrics,
+                        "result_sha256": result_sha256,
                     }
                 ],
             }
@@ -590,6 +600,7 @@ def test_report_rejects_stale_run_manifest_checksums(tmp_path: Path) -> None:
     run_dir = dataset / "runs" / "baseline"
     run_dir.mkdir()
     manifest = _manifest(dataset, reference_sha256="stale-reference")
+    result_sha256 = _candidate_result_sha(dataset)
     (run_dir / "manifest.json").write_text(json.dumps(asdict(manifest)), encoding="utf-8")
     (run_dir / "evaluation.json").write_text(
         json.dumps(
@@ -597,6 +608,7 @@ def test_report_rejects_stale_run_manifest_checksums(tmp_path: Path) -> None:
                 "source_sha256": manifest.source_sha256,
                 "reference_sha256": manifest.reference_sha256,
                 "vocabulary_sha256": "stale-vocabulary",
+                "result_sha256": result_sha256,
                 "metrics": None,
                 "rtf": None,
             }
@@ -615,6 +627,7 @@ def test_report_rejects_stale_evaluation_checksums(tmp_path: Path) -> None:
     run_dir = dataset / "runs" / "baseline"
     run_dir.mkdir()
     manifest = _manifest(dataset, status="failed", error="model unavailable")
+    result_sha256 = _candidate_result_sha(dataset)
     (run_dir / "manifest.json").write_text(json.dumps(asdict(manifest)), encoding="utf-8")
     (run_dir / "evaluation.json").write_text(
         json.dumps(
@@ -622,6 +635,7 @@ def test_report_rejects_stale_evaluation_checksums(tmp_path: Path) -> None:
                 "source_sha256": manifest.source_sha256,
                 "reference_sha256": manifest.reference_sha256,
                 "vocabulary_sha256": "stale-vocabulary",
+                "result_sha256": result_sha256,
                 "metrics": None,
                 "rtf": None,
             }
@@ -635,11 +649,41 @@ def test_report_rejects_stale_evaluation_checksums(tmp_path: Path) -> None:
     assert "run checksum mismatch" in result.output
 
 
+@pytest.mark.parametrize("result_sha256", (None, "previous-result"))
+def test_report_rejects_unbound_or_stale_asr_result_evaluation(
+    tmp_path: Path,
+    result_sha256: str | None,
+) -> None:
+    dataset, _audio = _accepted_dataset(tmp_path)
+    run_dir = dataset / "runs" / "baseline"
+    run_dir.mkdir()
+    manifest = _manifest(dataset)
+    result_path = run_dir / "result.json"
+    result_path.write_text('{"segments":[{"text":"current"}]}', encoding="utf-8")
+    (run_dir / "manifest.json").write_text(json.dumps(asdict(manifest)), encoding="utf-8")
+    evaluation = {
+        "source_sha256": manifest.source_sha256,
+        "reference_sha256": manifest.reference_sha256,
+        "vocabulary_sha256": manifest.vocabulary_sha256,
+        "metrics": _valid_metrics(),
+        "rtf": 0.5,
+    }
+    if result_sha256 is not None:
+        evaluation["result_sha256"] = result_sha256
+    (run_dir / "evaluation.json").write_text(json.dumps(evaluation), encoding="utf-8")
+
+    result = runner.invoke(app, ["benchmark", "report", "--dataset", str(dataset)])
+
+    assert result.exit_code == 1
+    assert "ASR result checksum mismatch" in result.output
+
+
 def test_report_preserves_asr_only_datasets_without_speaker_reference(tmp_path: Path) -> None:
     dataset, _audio = _accepted_dataset(tmp_path)
     run_dir = dataset / "runs" / "baseline"
     run_dir.mkdir()
     manifest = _manifest(dataset)
+    result_sha256 = _candidate_result_sha(dataset)
     (run_dir / "manifest.json").write_text(json.dumps(asdict(manifest)), encoding="utf-8")
     (run_dir / "evaluation.json").write_text(
         json.dumps(
@@ -647,6 +691,7 @@ def test_report_preserves_asr_only_datasets_without_speaker_reference(tmp_path: 
                 "source_sha256": manifest.source_sha256,
                 "reference_sha256": manifest.reference_sha256,
                 "vocabulary_sha256": manifest.vocabulary_sha256,
+                "result_sha256": result_sha256,
                 "metrics": _valid_metrics(),
                 "rtf": 0.5,
             }
@@ -680,6 +725,49 @@ def test_evaluate_asr_uses_source_audio_duration_for_rtf(
     assert result.exit_code == 0
     evaluation = json.loads((run_dir / "evaluation.json").read_text(encoding="utf-8"))
     assert evaluation["rtf"] == 0.1
+    assert evaluation["result_sha256"] == _sha256(run_dir / "result.json")
+
+
+def test_winner_context_rejects_report_after_ranked_asr_result_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataset, _audio = _accepted_dataset(tmp_path)
+    run_dir = dataset / "runs" / "baseline"
+    run_dir.mkdir()
+    manifest = _manifest(dataset)
+    result_path = run_dir / "result.json"
+    result_path.write_text('{"segments":[{"text":"ranked"}]}', encoding="utf-8")
+    (run_dir / "manifest.json").write_text(json.dumps(asdict(manifest)), encoding="utf-8")
+    (run_dir / "evaluation.json").write_text(
+        json.dumps(
+            {
+                "source_sha256": manifest.source_sha256,
+                "reference_sha256": manifest.reference_sha256,
+                "vocabulary_sha256": manifest.vocabulary_sha256,
+                "result_sha256": _sha256(result_path),
+                "metrics": _valid_metrics(),
+                "rtf": 0.5,
+            }
+        ),
+        encoding="utf-8",
+    )
+    report_result = runner.invoke(app, ["benchmark", "report", "--dataset", str(dataset)])
+    assert report_result.exit_code == 0
+    result_path.write_text('{"segments":[{"text":"mutated"}]}', encoding="utf-8")
+    monkeypatch.setenv("HF_TOKEN", "unused")
+
+    with patch(
+        "audio_transcribe.benchmark.cli.run_asr_candidate",
+        side_effect=AssertionError("model must not run"),
+    ):
+        result = runner.invoke(
+            app,
+            ["benchmark", "run-asr", "--dataset", str(dataset), "--candidate", "winner-context"],
+        )
+
+    assert result.exit_code == 1
+    assert "winner-context result checksum mismatch" in result.output
 
 
 @pytest.mark.parametrize("duration_s", (0.0, float("nan"), float("inf")))
