@@ -15,7 +15,7 @@ jobs:
       matrix:
         backend: [mlx, mlx-vad]
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v8.3.2
         with:
           enable-cache: true
