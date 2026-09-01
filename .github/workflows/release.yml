@@ -27,7 +27,7 @@ jobs:
             --output-file dist/audio-transcribe-${GITHUB_REF_NAME}.cdx.json
       - name: Generate checksums
         run: cd dist && sha256sum * > SHA256SUMS
-      - uses: actions/attest-build-provenance@v4.1.1
+      - uses: actions/attest-build-provenance@v4.2.2
         with:
           subject-path: "dist/*"
       - name: Publish GitHub release
