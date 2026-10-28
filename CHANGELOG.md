@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+### Fixed
+- Pull `socksio` through every ML extra so model downloads work when traffic goes through a SOCKS proxy. Hugging Face Hub 1.x and newer use `httpx2`, which fails with `ImportError: Using SOCKS proxy, but the 'socksio' package is not installed` unless that extra is installed
+
 ## [0.5.1] - 2026-07-28
 
 ### Fixed
