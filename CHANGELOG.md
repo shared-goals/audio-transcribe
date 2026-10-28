@@ -4,7 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+### Changed
+- Refresh every locked dependency to the newest version allowed by the declared ranges (83 packages, including the advisories below)
+- Widen `av` to `>=15.1.0,<17` and `typer` to `>=0.26.8,<0.28`; PyAV 16 decodes against the same Homebrew FFmpeg 7 wiring as 15
+
 ### Fixed
+- Resolve `certifi`, `filelock`, `msgpack`, `urllib3` and `pip` to versions with no open advisories, so `pip-audit` passes again
 - Pull `socksio` through every ML extra so model downloads work when traffic goes through a SOCKS proxy. Hugging Face Hub 1.x and newer use `httpx2`, which fails with `ImportError: Using SOCKS proxy, but the 'socksio' package is not installed` unless that extra is installed
 
 ## [0.5.1] - 2026-07-28
