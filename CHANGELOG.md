@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-11-13
+
+### Changed
+- The public GitHub mirror excludes the private benchmark CLI (`audio_transcribe/benchmark`,
+  `tests/benchmark`) and its README section; the benchmark package stays on the internal remote only
+
 ## [0.6.2] - 2026-11-13
 
 ### Fixed
