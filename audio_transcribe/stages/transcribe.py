@@ -116,12 +116,17 @@ def transcribe_mlx_vad(
     model_size: str,
     language: str,
     options: MlxVadOptions | None = None,
+    keep_model: bool = False,
 ) -> tuple[dict[str, Any], Any]:
     """Transcribe using pyannote VAD pre-segmentation + mlx-whisper decoder.
 
     Combines whisperx's pyannote VAD (splits audio into <=30s speech chunks)
     with mlx-whisper's fast Apple Silicon decoder for better accuracy than
     plain mlx on conversational audio.
+
+    ``keep_model`` leaves the MLX model cached in ``ModelHolder`` for callers
+    that transcribe repeatedly (the resident ASR worker); the batch pipeline
+    keeps freeing it before align/diarize as before.
     """
     import mlx_whisper
     import torch
@@ -197,7 +202,8 @@ def transcribe_mlx_vad(
         all_segments.extend(_offset_segments(chunk_result.get("segments", []), chunk["start"]))
 
     # Free MLX model (~3 GB Metal GPU memory) before align/diarize stages
-    _clear_mlx_cache()
+    if not keep_model:
+        _clear_mlx_cache()
 
     result: dict[str, Any] = {
         "text": " ".join(seg.get("text", "") for seg in all_segments),

@@ -137,6 +137,28 @@ This project uses [Keep a Changelog](https://keepachangelog.com/) and [Semantic 
 
 **Releasing**: Use `/release` to bump version, stamp changelog, refresh the lockfile, commit, tag, and optionally push. The skill auto-detects the bump level from commit prefixes (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE` → major) and lets you override.
 
+## Versioned publication
+
+Every change published to origin, including documentation or project rules, ships as a versioned
+changeset: bump `version` in `pyproject.toml` and `audio_transcribe/__init__.py`, stamp `CHANGELOG.md`
+(move `[Unreleased]` entries into the new version heading with the current date), refresh `uv.lock` and
+pass `uv lock --check`, then commit. Create an annotated `v<version>` tag at that commit and publish a
+Gitea release through `tea` with the same version and notes. Run `scripts/mirror-to-github.sh` when the
+release must reach `audio-transcribe self-update`, which reads tags from the public GitHub mirror. Verify
+that the remote commit, tag, both version files and the release agree. Preserve published tags; a retry
+completes missing steps at the same commit. Unfinished local edits need no version.
+
+Choose PATCH by default for compatible refinements of existing behaviour, internal implementation, tests
+and documentation. Use MINOR for a new command, a new artifact or log format, a new CLI contract, or a
+substantial functional slice; say why in the release notes. Before 1.0, an incompatible change to the
+transcript artifact, the `.audio-data` JSON shape or the attribution log requires an explicit migration
+decision and the next MINOR. After 1.0, incompatible public changes take MAJOR. This follows
+[SemVer 2.0.0](https://semver.org/).
+
+A release that changes runtime behaviour on `chez-mac` also needs the update applied on that host through
+the project's own upgrade path (`audio-transcribe self-update`) and one short real recording verified end
+to end. Report the local upgrade, the remote host state and the observed processing separately.
+
 ## Git Conventions
 
 Do not include `Co-Authored-By` lines in commit messages.

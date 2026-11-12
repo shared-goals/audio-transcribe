@@ -182,6 +182,49 @@ The queue is SQLite-backed and survives restarts. Failed jobs retry with exponen
 
 For launchd, copy `scripts/com.gnezim.audio-transcribe-worker.plist.template`, replace its four placeholders, and point `__WORKER_SCRIPT__` at the executable `scripts/audio-transcribe-worker.sh`. `audio-transcribe worker status --json` is the health check; a running LaunchAgent alone is not considered healthy.
 
+### ASR service for short requests
+
+`audio-transcribe process` loads the model on every call (9 s for a 7 s recording), which is too slow for voice input in an agent composer. The service keeps the model warm:
+
+```zsh
+# build once, on the same architecture as the target host
+cargo build --release --manifest-path service/Cargo.toml
+
+# the Rust front owns HTTP, the queue and timeouts; the Python worker owns ASR
+python -m audio_transcribe.asr_worker --socket ~/.audio-transcribe/asr.sock \
+  --tone-model-dir ~/.local/share/sherpa-onnx-streaming-t-one-russian-2025-09-08
+
+ASR_WORKER_CMD="$PWD/.venv/bin/python -m audio_transcribe.asr_worker" \
+ASR_TONE_MODEL_DIR=~/.local/share/sherpa-onnx-streaming-t-one-russian-2025-09-08 \
+ASR_TOKEN_FILE=~/asr-token ASR_BIND=127.0.0.1:8765 \
+  ./service/target/release/audio-transcribe-service
+
+curl -H "Authorization: Bearer $(cat ~/asr-token)" \
+  -F file=@voice.webm -F language=ru http://127.0.0.1:8765/v1/audio/transcriptions
+curl http://127.0.0.1:8765/health
+```
+
+`POST /v1/audio/transcriptions` accepts the OpenAI-compatible multipart fields `file`, `model`, `language`, `prompt` and `response_format` (`json` by default, `text` for plain output). The final text comes from the production `mlx-vad` path with `mlx-whisper large-v3`, so punctuation and casing match `process`. T-one is the degraded answer when the final pass fails, and `--tone-prompt` feeds its text to the final pass as `initial_prompt` — off by default: an unpunctuated prompt makes whisper drop punctuation too.
+
+Measured 2026-11-12 on a Mac mini M4 (`chez-mac`): first call 7.2 s (model load), then 1.8 s for a 9 s recording; 27 s of audio takes 13.6 s and 63 s takes 31.8 s, so the service targets short requests, not meetings.
+
+For launchd, copy `scripts/com.gnezim.audio-transcribe-asr.plist.template`, replace the placeholders, and keep `ASR_BIND` on loopback unless the client reaches the host over the overlay network; `ASR_TOKEN_FILE` must stay `0600`. The worker is a child of the service and is killed with it, so stopping the service leaves no orphan process.
+
+Configuration is read from the environment: `ASR_BIND`, `ASR_SOCKET`, `ASR_TOKEN_FILE`, `ASR_WORKER_CMD`, `ASR_TONE_MODEL_DIR`, `ASR_TONE_PROMPT`, `ASR_WHISPER_MODEL`, `ASR_LANGUAGE` (default `ru`), `ASR_TIMEOUT_S` (default 60).
+
+### Service logs
+
+The service appends one JSON line per request and lifecycle event to `ASR_LOG_FILE` (`service_start`, `worker_start`, `worker_dropped`, `transcribe`, `unauthorized`) and rotates that file by size: `ASR_LOG_MAX_BYTES` (default 4 MiB) with `ASR_LOG_KEEP` rotations (default 5), so the log is bounded at 24 MiB and never needs a cleanup job. Per-request worker output does not go to launchd's stdio files, which therefore only carry startup lines.
+
+```zsh
+scripts/asr_log_review.py --hours 24          # human summary
+scripts/asr_log_review.py --hours 24 --json   # machine summary
+scripts/asr_log_review.py --hours 24 --only-anomalies   # silent when clean (cron)
+scripts/asr_log_review.py --hours 24 --fail-on-anomaly  # exit 2 on findings
+```
+
+The review flags error rate above 5 %, p95 above 15 s, worker restarts, token rejections, broken lines and an empty window — coarse thresholds meant to catch a broken service, not to grade latency.
+
 ## Updates
 
 Updates are explicit and always select the latest stable release tag. The CLI never mutates its own environment during an unrelated command:

@@ -623,6 +623,76 @@ def speakers_forget(
     typer.echo(f"Removed: {name}")
 
 
+def _parse_stamp(value: str) -> float:
+    parts = value.strip().split(":")
+    if not 1 <= len(parts) <= 3:
+        raise ValueError(f"не время: {value}")
+    total = 0.0
+    for part in parts:
+        total = total * 60 + float(part)
+    return total
+
+
+@app.command()
+def attribute(
+    meeting: Path = typer.Argument(..., help="Meeting note in the vault"),
+    speaker: str = typer.Option(..., "--speaker", help="Acoustic cluster to correct, e.g. SPEAKER_00"),
+    label: Optional[str] = typer.Option(None, "--label", help="New label; only for the whole cluster"),
+    to_speaker: Optional[str] = typer.Option(None, "--to-speaker", help="Move scope to an existing cluster"),
+    segment: Optional[int] = typer.Option(None, "--segment", help="Scope: one segment index"),
+    start: Optional[str] = typer.Option(None, "--from", help="Scope: start (MM:SS or H:MM:SS)"),
+    end: Optional[str] = typer.Option(None, "--to", help="Scope: end (MM:SS or H:MM:SS)"),
+    author: str = typer.Option("anton", "--author", help="Who made the correction"),
+    reason: str = typer.Option("", "--reason", help="Why the correction was made"),
+    base_version: Optional[int] = typer.Option(None, "--base-version", help="Reject if the log moved on"),
+    versions: bool = typer.Option(False, "--versions", help="Show the version log and exit"),
+) -> None:
+    """Record a speaker correction as a new attribution version."""
+    from audio_transcribe.attribution import (
+        AttributionError,
+        Scope,
+        apply_correction,
+        load_versions,
+        log_path,
+    )
+
+    path = log_path(meeting)
+    if versions:
+        entries = load_versions(path)
+        if not entries:
+            typer.echo("Версий нет.")
+            return
+        for entry in entries:
+            typer.echo(f"{entry.version}\t{entry.at}\t{entry.author}\t{entry.reason or '-'}\t{entry.operations}")
+        return
+
+    if segment is not None:
+        scope = Scope("segment", index=segment)
+    elif start or end:
+        if not (start and end):
+            typer.echo("Нужны оба времени: --from и --to", err=True)
+            raise typer.Exit(2)
+        scope = Scope("range", start=_parse_stamp(start), end=_parse_stamp(end))
+    else:
+        scope = Scope("cluster")
+
+    try:
+        version = apply_correction(
+            meeting,
+            scope,
+            speaker,
+            label=label,
+            target_speaker_id=to_speaker,
+            author=author,
+            reason=reason,
+            base_version=base_version,
+        )
+    except AttributionError as exc:
+        typer.echo(f"Отказ: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"Версия {version.version}: {version.operations[0]['segments']} реплик, лог {path}")
+
+
 @app.command("self-update")
 def self_update() -> None:
     """Force an immediate upgrade to the latest version."""

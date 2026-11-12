@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.gnezim.audio-transcribe-asr</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__SERVICE_BINARY__</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>ASR_WORKER_CMD</key>
+    <string>__WORKER_PYTHON__ -m audio_transcribe.asr_worker</string>
+    <key>PYTHONPATH</key>
+    <string>__PYTHONPATH__</string>
+    <key>ASR_SOCKET</key>
+    <string>__SOCKET__</string>
+    <key>ASR_BIND</key>
+    <string>__BIND__</string>
+    <key>ASR_TOKEN_FILE</key>
+    <string>__TOKEN_FILE__</string>
+    <key>ASR_TONE_MODEL_DIR</key>
+    <string>__TONE_MODEL_DIR__</string>
+    <key>ASR_LOG_FILE</key>
+    <string>__LOG_DIRECTORY__/asr-events.jsonl</string>
+    <key>ASR_LOG_MAX_BYTES</key>
+    <string>__LOG_MAX_BYTES__</string>
+    <key>ASR_LOG_KEEP</key>
+    <string>__LOG_KEEP__</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>__LOG_DIRECTORY__/audio-transcribe-asr.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIRECTORY__/audio-transcribe-asr.err</string>
+</dict>
+</plist>
