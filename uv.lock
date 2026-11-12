@@ -305,7 +305,7 @@ wheels = [
 
 [[package]]
 name = "audio-transcribe"
-version = "0.6.3"
+version = "0.6.4"
 source = { editable = "." }
 dependencies = [
     { name = "jiwer" },
