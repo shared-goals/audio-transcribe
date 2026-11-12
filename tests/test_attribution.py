@@ -168,3 +168,38 @@ def test_failed_note_write_removes_appended_log_line(meeting: Path, monkeypatch:
         apply_correction(meeting, Scope("cluster"), "SPEAKER_00", label="Speaker C", author="anton")
     assert load_versions(log_path(meeting)) == []
     shutil.rmtree(meeting.parent / ".attribution", ignore_errors=True)
+
+
+UNKNOWN_NOTE = """---
+type: meeting
+title: demo
+audio_file: /Users/demo/Movies/demo.mp3
+audio_data: .audio-data/demo.json
+---
+
+## Transcript
+
+[00:00] Unknown: одна реплика
+"""
+
+
+def test_unknown_speaker_line_is_matched_and_relabelled(tmp_path: Path) -> None:
+    note = tmp_path / "meetings" / "demo.md"
+    note.parent.mkdir(parents=True)
+    note.write_text(UNKNOWN_NOTE, encoding="utf-8")
+    data = note.parent / ".audio-data" / "demo.json"
+    data.parent.mkdir()
+    data.write_text(
+        json.dumps(
+            {
+                "segments": [{"start": 0.0, "end": 5.0, "text": "одна реплика", "speaker": "UNKNOWN"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    apply_correction(note, Scope("cluster"), "UNKNOWN", label="[[actors/demo|Демо]]", author="anton")
+
+    text = note.read_text(encoding="utf-8")
+    assert "[00:00] [[actors/demo|Демо]]: одна реплика" in text
+    assert "UNKNOWN: '[[actors/demo|Демо]]'" in text or 'UNKNOWN: "[[actors/demo|Демо]]"' in text
