@@ -226,3 +226,15 @@ def test_speaker_is_required_for_a_correction(tmp_path: Path) -> None:
     note.write_text(NOTE, encoding="utf-8")
     result = CliRunner().invoke(app, ["attribute", str(note), "--label", "X"])
     assert result.exit_code == 2
+
+
+def test_audio_data_override_is_used(tmp_path: Path) -> None:
+    note = tmp_path / "meetings" / "demo.md"
+    note.parent.mkdir(parents=True)
+    note.write_text(NOTE, encoding="utf-8")
+    cache = tmp_path / "cache" / "demo.json"
+    cache.parent.mkdir(parents=True)
+    cache.write_text(json.dumps(SEGMENTS), encoding="utf-8")
+
+    apply_correction(note, Scope("cluster"), "SPEAKER_00", label="Speaker C", author="anton", audio_data=cache)
+    assert "Speaker C" in note.read_text(encoding="utf-8")

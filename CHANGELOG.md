@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-13
+
+### Added
+- `attribute --audio-data PATH`: apply a speaker correction when the segments JSON is not next to the note,
+  e.g. a cached copy fetched from the processing host. Lets a client correct speakers without moving or
+  rewriting the vault artifact
+
 ## [0.6.4] - 2026-11-13
 
 ### Changed

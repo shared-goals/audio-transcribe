@@ -646,6 +646,9 @@ def attribute(
     reason: str = typer.Option("", "--reason", help="Why the correction was made"),
     base_version: Optional[int] = typer.Option(None, "--base-version", help="Reject if the log moved on"),
     versions: bool = typer.Option(False, "--versions", help="Show the version log and exit"),
+    audio_data: Optional[Path] = typer.Option(
+        None, "--audio-data", help="Segments JSON when it is not next to the note (e.g. a local cache copy)"
+    ),
 ) -> None:
     """Record a speaker correction as a new attribution version."""
     from audio_transcribe.attribution import (
@@ -689,6 +692,7 @@ def attribute(
             author=author,
             reason=reason,
             base_version=base_version,
+            audio_data=audio_data,
         )
     except AttributionError as exc:
         typer.echo(f"Отказ: {exc}", err=True)
