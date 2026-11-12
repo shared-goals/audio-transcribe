@@ -137,13 +137,14 @@ def plan_correction(
     label: str | None,
     target_speaker_id: str | None,
     version: int,
+    audio_data: Path | None = None,
 ) -> tuple[str, dict[str, Any], list[int]]:
     """Return (updated markdown, operation, affected indices, segments).
 
     Nothing is written here; every validation happens before the first write.
     """
     doc = parse_meeting(meeting_path.read_text(encoding="utf-8"))
-    stored = load_audio_data(meeting_path, doc)
+    stored = load_audio_data(meeting_path, doc) if audio_data is None else _read_audio_data(audio_data)
     segments: list[dict[str, Any]] = list(stored.get("segments", []))
     if not segments:
         raise AttributionError("в артефакте нет сегментов: правка спикера невозможна")
@@ -226,6 +227,18 @@ def plan_correction(
     return doc.to_markdown(), operation, picked
 
 
+def _read_audio_data(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise AttributionError(f"нет артефакта сегментов: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise AttributionError(f"повреждён артефакт сегментов: {path} — {exc}") from exc
+    if not isinstance(data, dict):
+        raise AttributionError(f"артефакт сегментов не объект: {path}")
+    return data
+
+
 def apply_correction(
     meeting_path: Path,
     scope: Scope,
@@ -237,6 +250,7 @@ def apply_correction(
     reason: str = "",
     base_version: int | None = None,
     now: str | None = None,
+    audio_data: Path | None = None,
 ) -> Version:
     """Append a version and update the note in place.
 
@@ -254,7 +268,7 @@ def apply_correction(
 
     before = meeting_path.read_text(encoding="utf-8")
     updated, operation, _picked = plan_correction(
-        meeting_path, scope, speaker_id, label, target_speaker_id, current + 1
+        meeting_path, scope, speaker_id, label, target_speaker_id, current + 1, audio_data
     )
 
     import hashlib
