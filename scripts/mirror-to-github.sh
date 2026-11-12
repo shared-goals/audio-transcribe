@@ -104,6 +104,13 @@ if [ "$FOUND_PII" -eq 1 ]; then
 fi
 ok "PII scan clean"
 
+info "Verifying that the public package imports and runs..."
+VERIFY_DIR=$(mktemp -d)
+uv venv "$VERIFY_DIR/venv" --python 3.12 >/dev/null
+uv pip install --python "$VERIFY_DIR/venv/bin/python" "$CLONE" --quiet
+"$VERIFY_DIR/venv/bin/audio-transcribe" --version
+rm -rf "$VERIFY_DIR"
+
 info "Pushing to GitHub..."
 git -C "$CLONE" remote add github "$GITHUB_REMOTE"
 git -C "$CLONE" push github "$BRANCH" --force

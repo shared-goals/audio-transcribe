@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-13
+
+### Fixed
+- The CLI imports the benchmark typer lazily, so a package built without the private benchmark module still
+  starts; before this, every command failed with `ModuleNotFoundError: audio_transcribe.benchmark`
+
+### Changed
+- The public mirror now installs the stripped tree into a temporary environment and runs
+  `audio-transcribe --version` before pushing, so a broken public package cannot be published again
+
 ## [0.7.0] - 2026-11-13
 
 ### Added

@@ -168,3 +168,26 @@ def test_sync_hf_token_neither_set(tmp_path, monkeypatch):
 
     assert not cache_file.exists()
     assert "HF_TOKEN" not in os.environ
+
+
+def test_cli_works_without_the_benchmark_package(monkeypatch) -> None:
+    import builtins
+    import importlib
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name.startswith("audio_transcribe.benchmark"):
+            raise ImportError("benchmark excluded from the public package")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    sys.modules.pop("audio_transcribe.cli", None)
+    module = importlib.import_module("audio_transcribe.cli")
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    assert runner.invoke(module.app, ["--version"]).exit_code == 0
+    help_text = runner.invoke(module.app, ["--help"]).output
+    assert "process" in help_text
+    assert "benchmark" not in help_text

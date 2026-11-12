@@ -11,7 +11,10 @@ from typing import Optional
 
 import typer
 
-from audio_transcribe.benchmark.cli import benchmark_app
+try:  # the benchmark CLI is not part of the public mirror
+    from audio_transcribe.benchmark.cli import benchmark_app
+except ImportError:  # pragma: no cover - exercised only in the published package
+    benchmark_app = None
 
 # Suppress harmless warnings from torchcodec and Lightning before any ML imports
 warnings.filterwarnings("ignore", message=r"(?s).*torchcodec", category=UserWarning)
@@ -22,7 +25,8 @@ os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 app = typer.Typer(name="audio-transcribe", help="Local audio transcription pipeline.", add_completion=False)
 
-app.add_typer(benchmark_app, name="benchmark")
+if benchmark_app is not None:
+    app.add_typer(benchmark_app, name="benchmark")
 speakers_app = typer.Typer(help="Manage known speaker voice embeddings.")
 app.add_typer(speakers_app, name="speakers")
 worker_app = typer.Typer(help="Manage the durable unattended transcription queue.")
