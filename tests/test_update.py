@@ -27,7 +27,7 @@ def test_latest_release_failure() -> None:
 
 def test_force_upgrade_success() -> None:
     with (
-        patch("audio_transcribe.update._latest_release", return_value="0.6.0"),
+        patch("audio_transcribe.update._latest_release", return_value="9.9.9"),
         patch("audio_transcribe.update.subprocess.run") as mock_run,
         patch("audio_transcribe.update.sys.platform", "darwin"),
         patch("audio_transcribe.update.shutil.which", return_value="/opt/homebrew/bin/brew"),
@@ -48,7 +48,7 @@ def test_force_upgrade_success() -> None:
                 "--python",
                 "3.12",
                 "--force",
-                "audio-transcribe[ml] @ git+https://github.com/shared-goals/audio-transcribe.git@v0.6.0",
+                "audio-transcribe[ml] @ git+https://github.com/shared-goals/audio-transcribe.git@v9.9.9",
             ],
             timeout=300.0,
             check=True,
@@ -60,7 +60,7 @@ def test_force_upgrade_success() -> None:
 
 def test_force_upgrade_failure():
     with (
-        patch("audio_transcribe.update._latest_release", return_value="0.6.0"),
+        patch("audio_transcribe.update._latest_release", return_value="9.9.9"),
         patch("audio_transcribe.update.subprocess.run", side_effect=subprocess.TimeoutExpired([], 300)),
     ):
         assert force_upgrade() is False

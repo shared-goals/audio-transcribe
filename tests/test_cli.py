@@ -50,7 +50,9 @@ for args in (["--help"], ["benchmark", "--help"], ["stats", "--help"]):
 def test_cli_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert result.output.strip() == "0.5.1"
+    from audio_transcribe import __version__
+
+    assert result.output.strip() == __version__
 
 
 def test_process_help():

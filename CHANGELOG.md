@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-13
+
+### Added
+- `audio-transcribe attribute`: manual speaker corrections as append-only versions. The log lives in
+  `meetings/.attribution/<stem>.jsonl` and is created only when the first manual correction happens;
+  each line records version, base version, author, reason, scope, speaker before/after, affected segment
+  count and the note hash before the edit
+- Correction scopes: one segment, a time range over whole segments, or a whole acoustic cluster. Moving
+  part of a cluster to an existing cluster is allowed; a new label is accepted only for the whole cluster,
+  because `frontmatter.speakers` maps one cluster to one label
+- Stale `--base-version` is refused before any write; a hand-edited transcript line that cannot be found
+  aborts the correction; a failed note write truncates the appended log line back
+- `attribute --versions` prints the recorded versions inspectably
+- ASR service for short requests: a resident worker (`audio_transcribe.asr_worker`) keeps `mlx-whisper large-v3` warm over a Unix socket, and a Rust front (`service/`, axum) owns the queue, timeouts, bearer token and worker lifecycle behind `POST /v1/audio/transcriptions` and `GET /health`
+- Optional streaming T-one Russian first pass in the worker: degraded answer when the final pass fails, or `initial_prompt` with `--tone-prompt`
+- `keep_model` flag for `transcribe_mlx_vad` so a resident caller keeps the MLX model cached
+- `asr` extra (`sherpa-onnx`, `mlx-whisper`) and a launchd template for the service
+
+- Bounded JSON-lines event log in the service (`ASR_LOG_FILE`/`ASR_LOG_MAX_BYTES`/`ASR_LOG_KEEP`, default 4 MiB × 5) with rotation on write; per-request output no longer reaches the launchd stdio files
+- `scripts/asr_log_review.py`: 24 h summary of traffic, latency percentiles, error rate, degraded answers, worker restarts and token rejections; `--json`, `--only-anomalies`, `--fail-on-anomaly`
+
+### Measured
+- Mac mini M4: 9 s recording 1.8 s warm (7.2 s first call); 27 s 13.6 s; 63 s 31.8 s. Feeding the T-one text as `initial_prompt` removes punctuation and casing from the final text, so it stays opt-in
+
 ### Added
 - Checksum-bound diarization benchmark CLI, evaluation, combined ASR+diarization ranking, and runtime forecasts
 - pyannote 3.1 and Community-1 benchmark adapters with exclusive speaker assignment

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "audio-transcribe"
-version = "0.5.1"
+version = "0.6.0"
 description = "Local audio transcription pipeline for structured meeting notes"
 readme = "README.md"
 license = "MIT"
@@ -18,6 +18,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+asr = [
+    # Resident ASR worker for the short-request service: streaming T-one first
+    # pass plus the production mlx-whisper model for punctuation.
+    "mlx-whisper>=0.4.3,<0.5",
+    "sherpa-onnx>=2.0.1,<3",
+]
 mlx = [
     "av>=15.1.0,<16",
     "mlx-whisper>=0.4.3,<0.5",
@@ -100,7 +106,7 @@ disallow_untyped_defs = true
 warn_return_any = true
 
 [[tool.mypy.overrides]]
-module = ["mlx.*", "mlx_whisper.*", "pyannote.*", "torch.*", "whisperx.*"]
+module = ["mlx.*", "mlx_whisper.*", "pyannote.*", "torch.*", "whisperx.*", "sherpa_onnx.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
