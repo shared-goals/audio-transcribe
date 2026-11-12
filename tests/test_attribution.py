@@ -203,3 +203,26 @@ def test_unknown_speaker_line_is_matched_and_relabelled(tmp_path: Path) -> None:
     text = note.read_text(encoding="utf-8")
     assert "[00:00] [[actors/demo|Демо]]: одна реплика" in text
     assert "UNKNOWN: '[[actors/demo|Демо]]'" in text or 'UNKNOWN: "[[actors/demo|Демо]]"' in text
+
+
+def test_versions_can_be_listed_without_a_speaker(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from audio_transcribe.cli import app
+
+    note = tmp_path / "demo.md"
+    note.write_text(NOTE, encoding="utf-8")
+    result = CliRunner().invoke(app, ["attribute", str(note), "--versions"])
+    assert result.exit_code == 0, result.output
+    assert "Версий нет" in result.output
+
+
+def test_speaker_is_required_for_a_correction(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from audio_transcribe.cli import app
+
+    note = tmp_path / "demo.md"
+    note.write_text(NOTE, encoding="utf-8")
+    result = CliRunner().invoke(app, ["attribute", str(note), "--label", "X"])
+    assert result.exit_code == 2

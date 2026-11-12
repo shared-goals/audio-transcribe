@@ -636,7 +636,7 @@ def _parse_stamp(value: str) -> float:
 @app.command()
 def attribute(
     meeting: Path = typer.Argument(..., help="Meeting note in the vault"),
-    speaker: str = typer.Option(..., "--speaker", help="Acoustic cluster to correct, e.g. SPEAKER_00"),
+    speaker: Optional[str] = typer.Option(None, "--speaker", help="Acoustic cluster to correct, e.g. SPEAKER_00"),
     label: Optional[str] = typer.Option(None, "--label", help="New label; only for the whole cluster"),
     to_speaker: Optional[str] = typer.Option(None, "--to-speaker", help="Move scope to an existing cluster"),
     segment: Optional[int] = typer.Option(None, "--segment", help="Scope: one segment index"),
@@ -666,6 +666,9 @@ def attribute(
             typer.echo(f"{entry.version}\t{entry.at}\t{entry.author}\t{entry.reason or '-'}\t{entry.operations}")
         return
 
+    if not speaker:
+        typer.echo("Нужен --speaker (или --versions, чтобы только посмотреть лог)", err=True)
+        raise typer.Exit(2)
     if segment is not None:
         scope = Scope("segment", index=segment)
     elif start or end:
