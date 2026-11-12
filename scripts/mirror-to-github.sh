@@ -22,6 +22,9 @@ EXCLUDE_PATHS=(
     ".claude"
     ".gitea"
     "scripts/mirror-to-github.sh"
+    # Benchmark CLI and its private dataset tooling stay on the internal remote.
+    "audio_transcribe/benchmark"
+    "tests/benchmark"
 )
 
 # PII patterns to scan for (fail-safe)
@@ -62,6 +65,26 @@ git -C "$CLONE" commit --quiet --amend --no-edit
 for tag in "${TIP_TAGS[@]}"; do
     [[ -n "$tag" ]] && git -C "$CLONE" tag --force "$tag" HEAD
 done
+
+info "Stripping private benchmark docs from README..."
+python3 - "$CLONE/README.md" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+out, skipping = [], False
+for line in lines:
+    if line.startswith("### Private ASR and diarization benchmarks"):
+        skipping = True
+        continue
+    if skipping and line.startswith("### "):
+        skipping = False
+    if not skipping:
+        out.append(line)
+path.write_text("".join(out), encoding="utf-8")
+PY
+git -C "$CLONE" add -A
 
 info "Scanning for PII leaks..."
 FOUND_PII=0
