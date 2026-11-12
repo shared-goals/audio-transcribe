@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-11-13
+
+### Changed
+- The public mirror also excludes `docs/superpowers` (internal benchmark and quality design notes), so no
+  benchmark material is published outside the internal remote
+
 ## [0.6.3] - 2026-11-13
 
 ### Changed

@@ -25,6 +25,7 @@ EXCLUDE_PATHS=(
     # Benchmark CLI and its private dataset tooling stay on the internal remote.
     "audio_transcribe/benchmark"
     "tests/benchmark"
+    "docs/superpowers"
 )
 
 # PII patterns to scan for (fail-safe)
