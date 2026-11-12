@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-13
+
+### Fixed
+- `attribute` matches the transcript line of a speaker that has no entry in `frontmatter.speakers`
+  (`UNKNOWN` is rendered as `Unknown`, other clusters as their raw id), so correcting an
+  undiarized recording no longer aborts with "строка транскрипта не найдена"
+
 ## [0.6.0] - 2026-11-13
 
 ### Added

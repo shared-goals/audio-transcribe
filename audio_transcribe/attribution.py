@@ -26,6 +26,15 @@ from audio_transcribe.util import atomic_write_text
 ScopeKind = Literal["segment", "range", "cluster"]
 
 _LINE_RE = re.compile(r"^\[([\d:]+)\]\s(.*?):\s(.*)$")
+
+
+def rendered_label(speaker_id: str, speakers: dict[str, Any]) -> str:
+    """The label `format_segment` would print for this acoustic id."""
+    if speaker_id in speakers:
+        return str(speakers[speaker_id])
+    return "Unknown" if speaker_id == "UNKNOWN" else speaker_id
+
+
 LOG_DIR = ".attribution"
 
 
@@ -151,7 +160,7 @@ def plan_correction(
 
     speakers = doc.frontmatter.get("speakers")
     speakers = dict(speakers) if isinstance(speakers, dict) else {}
-    old_label = str(speakers.get(speaker_id, ""))
+    old_label = rendered_label(speaker_id, speakers)
 
     target_id = target_speaker_id or speaker_id
     if target_id != speaker_id and target_id not in known:
@@ -165,8 +174,8 @@ def plan_correction(
             raise AttributionError(
                 "новая метка возможна только для всего кластера; для части реплик выберите существующего спикера"
             )
-    new_label = label if (label and target_id == speaker_id) else str(speakers.get(target_id, ""))
-    if not new_label:
+    new_label = label if (label and target_id == speaker_id) else rendered_label(target_id, speakers)
+    if not new_label or new_label == target_id:
         raise AttributionError(f"у спикера {target_id} нет метки в заметке")
 
     # Rewrite only the label part of the affected transcript lines.
@@ -176,7 +185,7 @@ def plan_correction(
     for index in picked:
         segment = segments[index]
         stamp = format_time(float(segment["start"]))
-        original = old_label if target_id == speaker_id else str(speakers.get(str(segment.get("speaker")), ""))
+        original = old_label if target_id == speaker_id else rendered_label(str(segment.get("speaker")), speakers)
         match_index = next(
             (
                 n
