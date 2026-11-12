@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-13
+
+### Fixed
+- `attribute --versions` no longer demands `--speaker`; a correction without `--speaker` exits 2 with a
+  readable message instead of a bare option error
+
 ## [0.6.1] - 2026-11-13
 
 ### Fixed
