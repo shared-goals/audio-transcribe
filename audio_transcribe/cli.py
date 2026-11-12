@@ -11,8 +11,11 @@ from typing import Optional
 
 import typer
 
+benchmark_app: typer.Typer | None
 try:  # the benchmark CLI is not part of the public mirror
-    from audio_transcribe.benchmark.cli import benchmark_app
+    from audio_transcribe.benchmark.cli import benchmark_app as _benchmark_app
+
+    benchmark_app = _benchmark_app
 except ImportError:  # pragma: no cover - exercised only in the published package
     benchmark_app = None
 

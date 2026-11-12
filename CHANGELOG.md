@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-11-13
+
+### Fixed
+- Type the optional benchmark typer and isolate the import-guard test in a subprocess, so the full suite
+  passes again and `mypy .` is clean
+
 ## [0.7.1] - 2026-11-13
 
 ### Fixed
