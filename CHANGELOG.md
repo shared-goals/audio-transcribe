@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-11-13
+
+### Fixed
+- CI on the published tree is green: the two help tests no longer require the private `benchmark` command, `retime`
+  and `attribute` print a readable message when the segments artifact is missing instead of a raw `PipelineError`,
+  and coverage is measured over shipped modules only (`benchmark/*` and the interactive TUI are omitted) with new CLI
+  surface tests bringing the gate to 82.6 %
+
 ## [0.9.3] - 2026-11-13
 
 ### Fixed

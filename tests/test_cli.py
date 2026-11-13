@@ -17,10 +17,13 @@ def _plain(text: str) -> str:
 
 
 def test_cli_help():
+    from audio_transcribe.cli import benchmark_app
+
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "process" in result.output
-    assert "benchmark" in result.output
+    # The benchmark CLI lives only in the internal tree.
+    assert ("benchmark" in result.output) is (benchmark_app is not None)
 
 
 def test_core_cli_and_benchmark_help_do_not_import_optional_ml_packages() -> None:
@@ -30,9 +33,12 @@ import sys
 sys.modules["torch"] = None
 sys.modules["pyannote"] = None
 from typer.testing import CliRunner
-from audio_transcribe.cli import app
+from audio_transcribe.cli import app, benchmark_app
 runner = CliRunner()
-for args in (["--help"], ["benchmark", "--help"], ["stats", "--help"]):
+targets = [["--help"], ["stats", "--help"]]
+if benchmark_app is not None:
+    targets.append(["benchmark", "--help"])
+for args in targets:
     result = runner.invoke(app, args)
     if result.exit_code != 0:
         raise SystemExit(f"{args}: {result.exception}\\n{result.output}")

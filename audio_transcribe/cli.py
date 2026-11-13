@@ -705,6 +705,8 @@ def attribute(
     else:
         scope = Scope("cluster")
 
+    from audio_transcribe.errors import PipelineError
+
     try:
         version = apply_correction(
             meeting,
@@ -717,7 +719,7 @@ def attribute(
             base_version=base_version,
             audio_data=audio_data,
         )
-    except AttributionError as exc:
+    except (AttributionError, PipelineError) as exc:
         typer.echo(f"Отказ: {exc}", err=True)
         raise typer.Exit(1) from exc
     typer.echo(f"Версия {version.version}: {version.operations[0]['segments']} реплик, лог {path}")
@@ -734,6 +736,7 @@ def retime(
     import json
     import tempfile
 
+    from audio_transcribe.errors import PipelineError
     from audio_transcribe.markdown.parser import parse_meeting
     from audio_transcribe.retime import current_offset, retime_document, with_offset_marker
     from audio_transcribe.stages.loader import load_audio_data
@@ -742,7 +745,11 @@ def retime(
 
     text = meeting.read_text(encoding="utf-8")
     doc = parse_meeting(text)
-    data = load_audio_data(meeting, doc)
+    try:
+        data = load_audio_data(meeting, doc)
+    except PipelineError as exc:
+        typer.echo(f"Нет артефакта сегментов: {exc}", err=True)
+        raise typer.Exit(2) from exc
     source = str(audio_file or doc.frontmatter.get("audio_file", ""))
     if not source:
         typer.echo("Не указан исходный файл: нет audio_file в заметке", err=True)
