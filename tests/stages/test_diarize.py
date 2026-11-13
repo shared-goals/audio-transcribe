@@ -9,4 +9,4 @@ def test_diarize_signature():
 
     sig = inspect.signature(diarize)
     params = list(sig.parameters.keys())
-    assert params == ["result", "audio", "hf_token", "min_speakers", "max_speakers"]
+    assert params == ["result", "audio", "hf_token", "min_speakers", "max_speakers", "num_speakers"]
