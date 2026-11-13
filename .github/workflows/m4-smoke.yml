@@ -2,8 +2,10 @@ name: Apple Silicon ML smoke
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 3 * * 1"
+  # No schedule: the self-hosted runner does not exist, so scheduled runs sat for
+  # 24 hours and were cancelled. Run by hand when a runner is attached.
+  # schedule:
+  #   - cron: "17 3 * * 1"
 
 jobs:
   real-backends:

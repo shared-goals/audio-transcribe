@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-11-13
+
+### Fixed
+- The benchmark typer is loaded through `importlib`, so mypy in the published tree no longer fails with
+  `import-untyped` for the private module that the mirror does not contain (CI on GitHub was red since 0.6.3)
+- GitHub releases are created even when `docs/releases/<tag>.md` is absent: notes are taken from the CHANGELOG section
+  by `scripts/changelog_section.py` (release workflow failed on every tag after v0.5.0)
+- The weekly `Apple Silicon ML smoke` schedule is commented out: no self-hosted macOS runner is attached, so every
+  scheduled run sat until the 24-hour cancel
+
 ## [0.9.2] - 2026-11-13
 
 ### Changed

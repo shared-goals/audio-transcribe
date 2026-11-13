@@ -11,13 +11,27 @@ from typing import Optional
 
 import typer
 
-benchmark_app: typer.Typer | None
-try:  # the benchmark CLI is not part of the public mirror
-    from audio_transcribe.benchmark.cli import benchmark_app as _benchmark_app
 
-    benchmark_app = _benchmark_app
-except ImportError:  # pragma: no cover - exercised only in the published package
-    benchmark_app = None
+def _load_benchmark_app() -> typer.Typer | None:
+    """The benchmark CLI is private and absent from the public mirror.
+
+    Imported by name so mypy does not classify the missing module as an
+    untyped third-party package in the published tree.
+    """
+    import importlib
+    import importlib.util
+
+    try:
+        if importlib.util.find_spec("audio_transcribe.benchmark.cli") is None:
+            return None
+        module = importlib.import_module("audio_transcribe.benchmark.cli")
+    except (ImportError, ModuleNotFoundError):
+        return None
+    candidate = getattr(module, "benchmark_app", None)
+    return candidate if isinstance(candidate, typer.Typer) else None
+
+
+benchmark_app = _load_benchmark_app()
 
 # Suppress harmless warnings from torchcodec and Lightning before any ML imports
 warnings.filterwarnings("ignore", message=r"(?s).*torchcodec", category=UserWarning)
