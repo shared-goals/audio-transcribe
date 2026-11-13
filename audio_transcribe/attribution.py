@@ -175,42 +175,44 @@ def plan_correction(
     if not new_label or new_label == target_id:
         raise AttributionError(f"у спикера {target_id} нет метки в заметке")
 
-    # Rewrite only the label part of the affected transcript lines.
+    # Rewrite only the label part of the affected transcript lines. A line is
+    # paired by its stamp, and an exact label wins over a line relabelled by
+    # hand: the cluster the user names is the cluster being renamed, so those
+    # lines change too and the count is recorded in the version.
     section = doc.sections.get("Transcript", "")
     lines = section.split("\n")
     used: set[int] = set()
+    relabelled_lines = 0
+    groups: dict[str, list[int]] = {}
     for index in picked:
-        segment = segments[index]
-        stamp = format_time(float(segment["start"]))
-        original = old_label if target_id == speaker_id else rendered_label(str(segment.get("speaker")), speakers)
+        stamp = format_time(float(segments[index]["start"]))
+        groups.setdefault(stamp, []).append(index)
+    for stamp, indexes in groups.items():
         candidates = [
-            n
-            for n, line in enumerate(lines)
-            if n not in used and (m := _LINE_RE.match(line)) and m.group(1) == stamp
+            n for n, line in enumerate(lines) if n not in used and (m := _LINE_RE.match(line)) and m.group(1) == stamp
         ]
-        exact = [n for n in candidates if (m := _LINE_RE.match(lines[n])) and m.group(2) == original]
-        if exact:
-            match_index: int | None = exact[0]
-        elif scope.kind != "cluster" and len(candidates) == 1:
-            # One line, one stamp: a label already changed by hand is still that line,
-            # and a single-segment edit names exactly what it wants to replace.
-            match_index = candidates[0]
-        else:
-            match_index = None
-        if match_index is None:
-            hint = (
-                "; кластер целиком перезаписал бы ручные подписи — правьте одну реплику или отрезок"
-                if scope.kind == "cluster"
-                else ""
-            )
+        if len(candidates) < len(indexes):
             raise AttributionError(
-                f"не найдена строка транскрипта для реплики {stamp} с меткой «{original}»; "
-                f"заметка правилась вручную — правка отменена{hint}"
+                f"в заметке {len(candidates)} строк на {stamp}, а реплик {len(indexes)}; "
+                "заметка и артефакт разошлись — правка отменена"
             )
-        used.add(match_index)
-        match = _LINE_RE.match(lines[match_index])
-        assert match is not None
-        lines[match_index] = f"[{match.group(1)}] {new_label}: {match.group(3)}"
+        for index in indexes:
+            expected = (
+                old_label
+                if target_id == speaker_id
+                else rendered_label(str(segments[index].get("speaker")), speakers)
+            )
+            match_index = next(
+                (n for n in candidates if _LINE_RE.match(lines[n]).group(2) == expected),  # type: ignore[union-attr]
+                candidates[0],
+            )
+            candidates.remove(match_index)
+            used.add(match_index)
+            match = _LINE_RE.match(lines[match_index])
+            assert match is not None
+            if match.group(2) != expected:
+                relabelled_lines += 1
+            lines[match_index] = f"[{match.group(1)}] {new_label}: {match.group(3)}"
 
     doc = replace_section(doc, "Transcript", "\n".join(lines))
     if target_id == speaker_id and not partial_label:
@@ -230,6 +232,8 @@ def plan_correction(
         "label_before": old_label,
         "label_after": new_label,
         "segments": len(picked),
+        # Lines whose label differed from the legend before this edit.
+        "relabelled_lines": relabelled_lines,
         # A partial label applies to these lines only; the cluster keeps its label.
         "partial": partial_label,
     }
