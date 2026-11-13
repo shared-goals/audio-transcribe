@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-13
+
+### Tests
+- The diarization stage forwards `num_speakers` and drops `min/max` when an exact count is given; without a hint the
+  range is passed unchanged
+
 ## [0.12.0] - 2026-11-13
 
 ### Added
