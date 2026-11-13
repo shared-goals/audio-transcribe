@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "audio-transcribe"
-version = "0.16.0"
+version = "0.16.1"
 description = "Local audio transcription pipeline for structured meeting notes"
 readme = "README.md"
 license = "MIT"

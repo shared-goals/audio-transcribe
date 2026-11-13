@@ -740,7 +740,10 @@ def attribute(
     except (AttributionError, PipelineError) as exc:
         typer.echo(f"Отказ: {exc}", err=True)
         raise typer.Exit(1) from exc
-    typer.echo(f"Версия {version.version}: {version.operations[0]['segments']} реплик, лог {path}")
+    operation = version.operations[0]
+    preserved = int(operation.get("preserved_lines") or 0)
+    kept = f", {preserved} строк с ручной меткой не тронуты" if preserved else ""
+    typer.echo(f"Версия {version.version}: {operation['segments']} реплик{kept}, лог {path}")
 
 
 def _restamp_only(meeting: Path, text: str, data: dict[str, Any], doc: Any, dry_run: bool) -> str:

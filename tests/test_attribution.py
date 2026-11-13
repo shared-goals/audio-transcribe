@@ -140,13 +140,33 @@ def test_second_correction_keeps_previous_version(meeting: Path) -> None:
     assert "[00:05] Speaker D: вторая реплика" in text
 
 
-def test_cluster_rename_replaces_a_line_labelled_by_hand(meeting: Path) -> None:
+def test_cluster_rename_keeps_a_line_labelled_by_hand(meeting: Path) -> None:
     edited = NOTE.replace("[00:05] Speaker B: вторая реплика", "[00:05] Кто-то: вторая реплика")
     meeting.write_text(edited, encoding="utf-8")
     version = apply_correction(meeting, Scope("cluster"), "SPEAKER_01", label="Speaker D", author="anton")
     text = meeting.read_text(encoding="utf-8")
-    assert "[00:05] Speaker D: вторая реплика" in text
-    assert version.operations[0]["relabelled_lines"] == 1
+    assert "[00:05] Кто-то: вторая реплика" in text, "a hand-set line must survive a cluster rename"
+    assert "SPEAKER_01: Speaker D" in text, "the cluster itself is still renamed"
+    assert version.operations[0]["preserved_lines"] == 1
+    assert version.operations[0]["relabelled_lines"] == 0
+
+
+def test_cluster_rename_rewrites_only_the_lines_with_the_legend_label(meeting: Path) -> None:
+    edited = NOTE.replace("[00:01] Speaker A: первая реплика", "[00:01] Кто-то: первая реплика")
+    meeting.write_text(edited, encoding="utf-8")
+    version = apply_correction(
+        meeting,
+        Scope("cluster"),
+        "SPEAKER_00",
+        target_speaker_id="SPEAKER_01",
+        author="anton",
+    )
+    text = meeting.read_text(encoding="utf-8")
+    assert "[00:01] Кто-то: первая реплика" in text, "the hand-set line stays as it was"
+    assert "[00:05] Speaker B: вторая реплика" in text
+    assert "[00:10] Speaker B: третья реплика, текст не трогаем" in text
+    assert version.operations[0]["preserved_lines"] == 1
+    assert version.operations[0]["segments"] == 2
 
 
 def test_missing_transcript_line_aborts_without_writing(meeting: Path) -> None:

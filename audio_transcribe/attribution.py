@@ -177,12 +177,13 @@ def plan_correction(
 
     # Rewrite only the label part of the affected transcript lines. A line is
     # paired by its stamp, and an exact label wins over a line relabelled by
-    # hand: the cluster the user names is the cluster being renamed, so those
-    # lines change too and the count is recorded in the version.
+    # hand. A cluster-wide edit never overwrites a line whose label the operator
+    # set one by one: those lines are counted as preserved in the version.
     section = doc.sections.get("Transcript", "")
     lines = section.split("\n")
     used: set[int] = set()
     relabelled_lines = 0
+    preserved_lines = 0
     groups: dict[str, list[int]] = {}
     for index in picked:
         stamp = format_time(float(segments[index]["start"]))
@@ -211,6 +212,9 @@ def plan_correction(
             match = _LINE_RE.match(lines[match_index])
             assert match is not None
             if match.group(2) != expected:
+                if scope.kind == "cluster":
+                    preserved_lines += 1
+                    continue
                 relabelled_lines += 1
             lines[match_index] = f"[{match.group(1)}] {new_label}: {match.group(3)}"
 
@@ -234,6 +238,8 @@ def plan_correction(
         "segments": len(picked),
         # Lines whose label differed from the legend before this edit.
         "relabelled_lines": relabelled_lines,
+        # Lines left alone because the operator had labelled them by hand.
+        "preserved_lines": preserved_lines,
         # A partial label applies to these lines only; the cluster keeps its label.
         "partial": partial_label,
     }
