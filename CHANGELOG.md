@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-13
+
+### Changed
+- `httpx2[socks]` is declared in the `mlx`, `whisperx`, `diarization` and `ml` extras, so Hugging Face downloads work
+  behind a SOCKS proxy (ported from the stale public PR #18 instead of merging it)
+- `typer>=0.27.0,<0.28` with 0.27.3 in the lock; the full CLI suite and `--help` were rerun on it
+- GitHub Actions: `checkout` 7.0.1, `setup-uv` 10.2.0, `attest-build-provenance` 4.2.2
+
+### Checks
+- `pytest` 457 passed, `ruff` and `mypy` clean, `uv lock --check` OK with `--extra ml` installed
+
 ## [0.9.1] - 2026-11-13
 
 ### Fixed
