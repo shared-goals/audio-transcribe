@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-13
+
+### Added
+- `attribute --label` on a single segment or a partial range now labels **only those transcript lines** and
+  leaves `frontmatter.speakers` untouched, so a line can carry an actor while the rest of the cluster keeps its
+  label. The log records `partial: true`, a whole-cluster label still updates the legend as before
+
 ## [0.7.2] - 2026-11-13
 
 ### Fixed
