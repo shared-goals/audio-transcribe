@@ -20,7 +20,9 @@ from audio_transcribe.models import Config, InputInfo, RunRecord, StageStats
 from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageError, StageStart
 from audio_transcribe.stages.correct import apply_corrections, load_corrections
 from audio_transcribe.stages.format import format_transcript
+from audio_transcribe.stages.preprocess import leading_trim_offset
 from audio_transcribe.stages.preprocess import preprocess as preprocess_stage
+from audio_transcribe.stages.timing import shift_timings
 from audio_transcribe.stages.transcribe import (
     build_output as build_output_stage,
 )
@@ -148,6 +150,7 @@ class Pipeline:
         self._stage_stats: dict[str, StageStats] = {}
         self._corrections_applied: int = 0
         self._audio_duration_s: float = 0.0
+        self._trim_offset_s: float = 0.0
         self._backend: str = ""
         self._checkpoints: CheckpointStore | None = None
 
@@ -233,6 +236,10 @@ class Pipeline:
             )
             self._save_checkpoint("preprocess", clean_path)
 
+        # Preprocess may drop leading silence; every later timestamp is relative
+        # to the trimmed file while the note keeps the original recording.
+        self._trim_offset_s = leading_trim_offset(config.audio_file, clean_path)
+
         # Stage 2: Transcribe
         cached_transcribe = self._load_checkpoint("transcribe")
         if isinstance(cached_transcribe, dict):
@@ -292,6 +299,7 @@ class Pipeline:
             self._save_checkpoint("correct", {"segments": segments, "count": count})
 
         # Stage 6: Build output
+        result = shift_timings(result, getattr(self, "_trim_offset_s", 0.0))
         elapsed = time.time() - t0
         output = self._run_stage(
             "format",
