@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "audio-transcribe"
-version = "0.9.3"
+version = "0.9.4"
 description = "Local audio transcription pipeline for structured meeting notes"
 readme = "README.md"
 license = "MIT"
@@ -117,6 +117,15 @@ ignore_missing_imports = true
 module = "tests.*"
 disallow_untyped_defs = false
 disallow_untyped_calls = false
+
+[tool.coverage.run]
+# The private benchmark CLI ships only in the internal tree; measuring it in the
+# published tree would compare different denominators.
+omit = [
+    "audio_transcribe/benchmark/*",
+    # Interactive rich TUI: exercised by hand, not by the unit suite.
+    "audio_transcribe/progress/tui.py",
+]
 
 [tool.pytest.ini_options]
 markers = [
