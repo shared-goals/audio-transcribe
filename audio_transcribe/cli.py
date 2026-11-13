@@ -644,7 +644,9 @@ def _parse_stamp(value: str) -> float:
 def attribute(
     meeting: Path = typer.Argument(..., help="Meeting note in the vault"),
     speaker: Optional[str] = typer.Option(None, "--speaker", help="Acoustic cluster to correct, e.g. SPEAKER_00"),
-    label: Optional[str] = typer.Option(None, "--label", help="New label; only for the whole cluster"),
+    label: Optional[str] = typer.Option(
+        None, "--label", help="New label; whole cluster updates the legend, one segment labels that line only"
+    ),
     to_speaker: Optional[str] = typer.Option(None, "--to-speaker", help="Move scope to an existing cluster"),
     segment: Optional[int] = typer.Option(None, "--segment", help="Scope: one segment index"),
     start: Optional[str] = typer.Option(None, "--from", help="Scope: start (MM:SS or H:MM:SS)"),

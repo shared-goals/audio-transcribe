@@ -169,12 +169,8 @@ def plan_correction(
     if target_id == speaker_id and not label:
         raise AttributionError("нужна новая метка или другой существующий спикер")
 
-    if label and target_id == speaker_id:
-        cluster_all = [i for i, s in enumerate(segments) if str(s.get("speaker", "UNKNOWN")) == speaker_id]
-        if sorted(picked) != cluster_all:
-            raise AttributionError(
-                "новая метка возможна только для всего кластера; для части реплик выберите существующего спикера"
-            )
+    cluster_all = [i for i, s in enumerate(segments) if str(s.get("speaker", "UNKNOWN")) == speaker_id]
+    partial_label = bool(label) and target_id == speaker_id and sorted(picked) != cluster_all
     new_label = label if (label and target_id == speaker_id) else rendered_label(target_id, speakers)
     if not new_label or new_label == target_id:
         raise AttributionError(f"у спикера {target_id} нет метки в заметке")
@@ -206,7 +202,7 @@ def plan_correction(
         lines[match_index] = f"[{match.group(1)}] {new_label}: {match.group(3)}"
 
     doc = replace_section(doc, "Transcript", "\n".join(lines))
-    if target_id == speaker_id:
+    if target_id == speaker_id and not partial_label:
         speakers[speaker_id] = new_label
         doc = set_frontmatter(doc, "speakers", speakers)
         legend = doc.sections.get("Speakers", "")
@@ -223,6 +219,8 @@ def plan_correction(
         "label_before": old_label,
         "label_after": new_label,
         "segments": len(picked),
+        # A partial label applies to these lines only; the cluster keeps its label.
+        "partial": partial_label,
     }
     return doc.to_markdown(), operation, picked
 

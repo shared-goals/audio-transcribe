@@ -95,16 +95,19 @@ def test_partial_scope_moves_segments_to_existing_cluster(meeting: Path) -> None
     assert "SPEAKER_00: Speaker A" in text
 
 
-def test_new_label_on_partial_cluster_is_refused(meeting: Path) -> None:
-    with pytest.raises(AttributionError, match="только для всего кластера"):
-        apply_correction(
-            meeting,
-            Scope("segment", index=0),
-            "SPEAKER_00",
-            label="[[actors/demo|Демо]]",
-            author="anton",
-        )
-    assert not log_path(meeting).exists()
+def test_partial_label_rewrites_only_that_line(meeting: Path) -> None:
+    version = apply_correction(
+        meeting,
+        Scope("segment", index=0),
+        "SPEAKER_00",
+        label="[[actors/demo|Демо]]",
+        author="anton",
+    )
+    text = meeting.read_text(encoding="utf-8")
+    assert "[00:01] [[actors/demo|Демо]]: первая реплика" in text
+    assert "[00:10] Speaker A: третья реплика, текст не трогаем" in text
+    assert "SPEAKER_00: Speaker A" in text, "cluster label must stay for the rest"
+    assert version.operations[0]["partial"] is True
 
 
 def test_stale_base_version_is_refused_and_nothing_is_written(meeting: Path) -> None:
