@@ -18,6 +18,7 @@ from audio_transcribe.config import Backend
 from audio_transcribe.errors import PipelineError
 from audio_transcribe.models import Config, InputInfo, RunRecord, StageStats
 from audio_transcribe.progress.events import PipelineComplete, PipelineStart, StageComplete, StageError, StageStart
+from audio_transcribe.stages.cluster_hygiene import diarization_report, merge_small_clusters
 from audio_transcribe.stages.correct import apply_corrections, load_corrections
 from audio_transcribe.stages.format import format_transcript
 from audio_transcribe.stages.preprocess import leading_trim_offset
@@ -151,6 +152,7 @@ class Pipeline:
         self._corrections_applied: int = 0
         self._audio_duration_s: float = 0.0
         self._trim_offset_s: float = 0.0
+        self._diarization_report: dict[str, Any] | None = None
         self._backend: str = ""
         self._checkpoints: CheckpointStore | None = None
 
@@ -286,6 +288,13 @@ class Pipeline:
                     StageComplete(stage="diarize", time_s=0.0, extra={"skipped": "HF_TOKEN not set"})
                 )
 
+        # Cluster hygiene: an artefact of a few seconds is not a speaker.
+        segments, merged_clusters = merge_small_clusters(result.get("segments", []))
+        if merged_clusters:
+            result["segments"] = segments
+            logger.info("Merged small diarization clusters: %s", merged_clusters)
+        self._diarization_report = diarization_report(result.get("segments", []))
+
         # Stage 5: Corrections (optional)
         corrections_path = config.corrections_path or str(Path.home() / ".audio-transcribe" / "corrections.yaml")
         corrections = load_corrections(corrections_path, effective_language)
@@ -308,6 +317,11 @@ class Pipeline:
         )
         if trim_offset_s > 0:
             output["timing_offset_s"] = round(trim_offset_s, 3)
+        report = getattr(self, "_diarization_report", None)
+        if report:
+            output["diarization"] = report
+            for warning in report.get("warnings", []):
+                logger.warning("Diarization: %s", warning)
         self._save_checkpoint("format", output)
 
         # Write JSON output
