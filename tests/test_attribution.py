@@ -331,3 +331,10 @@ def test_bulk_retime_skips_notes_that_are_already_shifted(tmp_path: Path, monkey
     assert "first.md: сдвинуто на 2.000" in result.output
     assert "second.md: уже сдвинуто на 2.000" in result.output
     assert "Изменено: 1" in result.output
+
+
+def test_empty_segment_has_no_trailing_space() -> None:
+    from audio_transcribe.stages.format import format_segment
+
+    assert format_segment({"start": 0.0, "text": "", "speaker": "UNKNOWN"}) == "[00:00] Unknown:"
+    assert format_segment({"start": 61.0, "text": "привет", "speaker": "UNKNOWN"}) == "[01:01] Unknown: привет"

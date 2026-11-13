@@ -33,7 +33,7 @@ def retime_document(text: str, data: dict[str, Any], offset_s: float) -> tuple[s
         if not match:
             continue
         stamp = format_stamp(parse_stamp(match.group(1)) + offset_s)
-        lines[index] = f"[{stamp}] {match.group(2)}"
+        lines[index] = f"[{stamp}] {match.group(2)}".rstrip()
         changed += 1
     shifted = shift_timings(data, offset_s)
     shifted["timing_offset_s"] = round(data_offset(data) + offset_s, 3)

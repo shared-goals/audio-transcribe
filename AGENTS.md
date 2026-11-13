@@ -129,6 +129,14 @@ Keep memory-intensive downstream analysis outside the transcription process. Wor
 
 Do not wrap or break lines in markdown files. Write each paragraph or list item as a single long line.
 
+## Tracker
+
+The project tracker is this repository's Gitea issues. Keep one `wayfinder:map` issue as the index of
+decisions: Destination / Notes / Current state — <date> / Decisions so far / Next action / Out of scope.
+Children carry their own `wayfinder:*` (grilling, research, prototype, task); implementation issues use
+`bug|enhancement` plus `needs-*`. The Vault project hub links the map in one line and does not copy it.
+Tracker mutations follow an explicit instruction.
+
 ## Release & Changelog
 
 This project uses [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/). Version is tracked in `pyproject.toml`, `audio_transcribe/__init__.py`, the installer default, and the generated `uv.lock`.
