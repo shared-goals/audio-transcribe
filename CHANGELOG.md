@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-13
+
+### Added
+- `retime --all --meetings-dir <dir>` restores absolute timings for every note in a directory that still needs it, and
+  skips notes whose recorded offset already matches. `--dry-run` reports the planned shifts per note
+- New runs record `timing_offset_s` in the `.audio-data` JSON as well as in the note, so `retime` can never shift the
+  same artifact twice (the 0.9.0 incident where the JSON moved and the note did not)
+
 ## [0.9.5] - 2026-11-13
 
 ### Fixed

@@ -299,12 +299,15 @@ class Pipeline:
             self._save_checkpoint("correct", {"segments": segments, "count": count})
 
         # Stage 6: Build output
-        result = shift_timings(result, getattr(self, "_trim_offset_s", 0.0))
+        trim_offset_s = getattr(self, "_trim_offset_s", 0.0)
+        result = shift_timings(result, trim_offset_s)
         elapsed = time.time() - t0
         output = self._run_stage(
             "format",
             lambda: build_output_stage(result, config.audio_file, effective_language, config.model, elapsed),
         )
+        if trim_offset_s > 0:
+            output["timing_offset_s"] = round(trim_offset_s, 3)
         self._save_checkpoint("format", output)
 
         # Write JSON output

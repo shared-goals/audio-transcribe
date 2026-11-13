@@ -63,9 +63,11 @@ def test_retime_rewrites_timestamps_and_records_the_offset(tmp_path: Path, monke
     monkeypatch.setattr(preprocess_module, "preprocess", lambda *args, **kwargs: "/tmp/trimmed.wav")
     monkeypatch.setattr(preprocess_module, "leading_trim_offset", lambda *args, **kwargs: 1.5)
 
+    audio = tmp_path / "a.mp3"
+    audio.write_bytes(b"\x00" * 32)
     note = tmp_path / "demo.md"
     note.write_text(
-        "---\ntype: meeting\naudio_file: /tmp/a.mp3\naudio_data: .audio-data/demo.json\n---\n\n"
+        f"---\ntype: meeting\naudio_file: {audio}\naudio_data: .audio-data/demo.json\n---\n\n"
         "## Transcript\n\n[00:00] A: привет\n",
         encoding="utf-8",
     )
@@ -81,7 +83,7 @@ def test_retime_rewrites_timestamps_and_records_the_offset(tmp_path: Path, monke
 
     again = runner.invoke(app, ["retime", str(note)])
     assert again.exit_code == 0
-    assert "уже сдвинута" in again.output
+    assert "уже сдвинуто" in again.output
 
 
 def test_worker_status_reads_an_empty_queue(tmp_path: Path) -> None:

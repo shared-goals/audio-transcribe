@@ -35,7 +35,9 @@ def retime_document(text: str, data: dict[str, Any], offset_s: float) -> tuple[s
         stamp = format_stamp(parse_stamp(match.group(1)) + offset_s)
         lines[index] = f"[{stamp}] {match.group(2)}"
         changed += 1
-    return "\n".join(lines), shift_timings(data, offset_s), changed
+    shifted = shift_timings(data, offset_s)
+    shifted["timing_offset_s"] = round(data_offset(data) + offset_s, 3)
+    return "\n".join(lines), shifted, changed
 
 
 def with_offset_marker(text: str, offset_s: float) -> str:
@@ -52,6 +54,11 @@ def with_offset_marker(text: str, offset_s: float) -> str:
     else:
         block = f"{block}\n{line}"
     return f"---\n{block}\n---\n" + text[match.end() :]
+
+
+def data_offset(data: dict[str, Any]) -> float:
+    value = data.get("timing_offset_s")
+    return float(value) if isinstance(value, (int, float)) else 0.0
 
 
 def current_offset(text: str) -> float:
