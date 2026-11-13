@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-11-13
+
+### Fixed
+- CI matrix uses `macos-latest`: the `macos-14` label resolved to an unsupported runner configuration
+  (`macos-14-arm64-us-default`) and every macOS job was cancelled before it started
+
 ## [0.9.4] - 2026-11-13
 
 ### Fixed
