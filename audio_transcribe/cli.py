@@ -377,6 +377,9 @@ def diarize(
     max_speakers: int = typer.Option(6, "--max-speakers"),
     force: bool = typer.Option(False, "--force", help="Re-diarize even if already diarized"),
     audio_file: Optional[str] = typer.Option(None, "--audio-file", help="Override audio file path"),
+    speakers: Optional[int] = typer.Option(
+        None, "--speakers", help="Exact number of speakers when known; overrides min/max"
+    ),
 ) -> None:
     """Add speaker diarization to an existing meeting note."""
     from audio_transcribe.stages.diarize_update import diarize_and_update
@@ -392,6 +395,7 @@ def diarize(
             max_speakers=max_speakers,
             force=force,
             audio_file_override=audio_file,
+            num_speakers=speakers,
         )
         typer.echo(f"Diarized: {meeting} (reanalyze: true)")
     except RuntimeError as e:

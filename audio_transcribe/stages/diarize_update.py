@@ -22,6 +22,7 @@ def run_diarization(
     segments: list[dict[str, Any]],
     min_speakers: int = 1,
     max_speakers: int = 6,
+    num_speakers: int | None = None,
 ) -> list[dict[str, Any]]:
     """Run pyannote diarization on audio and return segments with speaker labels."""
     import os
@@ -33,7 +34,12 @@ def run_diarization(
     audio = whisperx.load_audio(audio_file)
     result: dict[str, Any] = {"segments": segments}
     diarize_model = DiarizationPipeline(model_name="pyannote/speaker-diarization-3.1", token=hf_token, device="cpu")
-    diarize_segs = diarize_model(audio, min_speakers=min_speakers, max_speakers=max_speakers)
+    diarize_segs = diarize_model(
+        audio,
+        num_speakers=num_speakers,
+        min_speakers=None if num_speakers is not None else min_speakers,
+        max_speakers=None if num_speakers is not None else max_speakers,
+    )
     result = whisperx.assign_word_speakers(diarize_segs, result)
     return list(result.get("segments", []))
 
@@ -51,6 +57,7 @@ def diarize_and_update(
     force: bool = False,
     audio_file_override: str | None = None,
     db: SpeakerDB | None = None,
+    num_speakers: int | None = None,
 ) -> None:
     """Run diarization and update the meeting note in-place.
 
