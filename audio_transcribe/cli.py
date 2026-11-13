@@ -7,7 +7,7 @@ import os
 import sys
 import warnings
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 
@@ -725,14 +725,41 @@ def attribute(
     typer.echo(f"Версия {version.version}: {version.operations[0]['segments']} реплик, лог {path}")
 
 
-def _retime_note(meeting: Path, audio_file: Path | None, force: bool, dry_run: bool) -> str:
+def _restamp_only(meeting: Path, text: str, data: dict[str, Any], doc: Any, dry_run: bool) -> str:
+    """Rewrite display stamps from the artifact without changing the offset."""
+    import json
+
+    from audio_transcribe.retime import RetimeError, retime_document
+    from audio_transcribe.util import atomic_write_text
+
+    try:
+        updated, shifted, lines = retime_document(text, data, 0.0)
+    except RetimeError as exc:
+        return f"{meeting.name}: {exc}"
+    if updated == text:
+        return f"{meeting.name}: штампы уже совпадают с артефактом"
+    if dry_run:
+        return f"{meeting.name}: будет пересчитано штампов {lines}"
+    audio_data = meeting.parent / str(doc.frontmatter.get("audio_data", ""))
+    atomic_write_text(audio_data, json.dumps(shifted, ensure_ascii=False, indent=2))
+    atomic_write_text(meeting, updated)
+    return f"{meeting.name}: пересчитано штампов {lines}"
+
+
+def _retime_note(meeting: Path, audio_file: Path | None, force: bool, dry_run: bool, restamp: bool = False) -> str:
     """Measure and apply the offset for one note. Returns a one-line status."""
     import json
     import tempfile
 
     from audio_transcribe.errors import PipelineError
     from audio_transcribe.markdown.parser import parse_meeting
-    from audio_transcribe.retime import current_offset, data_offset, retime_document, with_offset_marker
+    from audio_transcribe.retime import (
+        RetimeError,
+        current_offset,
+        data_offset,
+        retime_document,
+        with_offset_marker,
+    )
     from audio_transcribe.stages.loader import load_audio_data
     from audio_transcribe.stages.preprocess import leading_trim_offset, preprocess
     from audio_transcribe.util import atomic_write_text
@@ -744,12 +771,14 @@ def _retime_note(meeting: Path, audio_file: Path | None, force: bool, dry_run: b
     except PipelineError as exc:
         return f"{meeting.name}: нет артефакта сегментов ({exc})"
     source = str(audio_file or doc.frontmatter.get("audio_file", ""))
-    if not source or not Path(source).exists():
-        return f"{meeting.name}: исходное аудио недоступно"
-    if not Path(source).is_file():
-        return f"{meeting.name}: исходное аудио недоступно"
+    measured = 0.0
+    if not restamp:
+        if not source or not Path(source).is_file():
+            return f"{meeting.name}: исходное аудио недоступно"
 
     with tempfile.TemporaryDirectory() as tmp:
+        if restamp:
+            return _restamp_only(meeting, text, data, doc, dry_run)
         trimmed = str(Path(tmp) / "trimmed.wav")
         try:
             preprocess(source, trimmed)
@@ -758,16 +787,22 @@ def _retime_note(meeting: Path, audio_file: Path | None, force: bool, dry_run: b
         measured = leading_trim_offset(source, trimmed)
 
     already = max(current_offset(text), data_offset(data))
-    delta = measured - already
-    if measured <= 0.05:
+    delta = 0.0 if restamp else measured - already
+    if restamp:
+        measured = already
+    if not restamp and measured <= 0.05:
         return f"{meeting.name}: ведущая тишина не удалялась — без изменений"
-    if delta <= 0.05:
+    if not restamp and delta <= 0.05:
         return f"{meeting.name}: уже сдвинуто на {already:.3f} с — без изменений"
-    if already > 0 and not force:
+    if not restamp and already > 0 and not force:
         return f"{meeting.name}: уже есть timing_offset_s={already:.3f} — нужен --force"
 
-    updated, shifted, lines = retime_document(text, data, delta)
-    updated = with_offset_marker(updated, delta)
+    try:
+        updated, shifted, lines = retime_document(text, data, delta)
+    except RetimeError as exc:
+        return f"{meeting.name}: {exc}"
+    if delta > 0:
+        updated = with_offset_marker(updated, delta)
     if dry_run:
         return f"{meeting.name}: будет сдвинуто на {delta:.3f} с, реплик {lines}"
     audio_data = meeting.parent / str(doc.frontmatter.get("audio_data", ""))
@@ -782,6 +817,7 @@ def retime(
     audio_file: Optional[Path] = typer.Option(None, "--audio-file", help="Override the source recording"),
     all_notes: bool = typer.Option(False, "--all", help="Retime every note in the directory that needs it"),
     meetings_dir: Path = typer.Option(Path("meetings"), "--meetings-dir", help="Directory used with --all"),
+    restamp: bool = typer.Option(False, "--restamp", help="Rewrite stamps from the artifact without shifting"),
     force: bool = typer.Option(False, "--force", help="Shift again if the note already carries an offset"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Measure and report without writing"),
 ) -> None:
@@ -793,7 +829,7 @@ def retime(
             raise typer.Exit(2)
         changed = 0
         for note in notes:
-            status = _retime_note(note, None, force, dry_run)
+            status = _retime_note(note, None, force, dry_run, restamp)
             typer.echo(status)
             if "будет сдвинуто" in status or ("сдвинуто на" in status and "уже" not in status):
                 changed += 1
@@ -803,7 +839,7 @@ def retime(
     if meeting is None:
         typer.echo("Нужна заметка или --all --meetings-dir", err=True)
         raise typer.Exit(2)
-    status = _retime_note(meeting, audio_file, force, dry_run)
+    status = _retime_note(meeting, audio_file, force, dry_run, restamp)
     typer.echo(status)
     if "нет артефакта" in status or "аудио недоступно" in status:
         raise typer.Exit(2)

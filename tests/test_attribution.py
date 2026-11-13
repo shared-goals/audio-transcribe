@@ -270,12 +270,20 @@ def test_retime_shifts_only_transcript_lines_and_records_offset() -> None:
     from audio_transcribe.retime import current_offset, retime_document, with_offset_marker
 
     text = NOTE
-    data = {"segments": [{"start": 0.37, "end": 1.5, "text": "x", "speaker": "SPEAKER_00"}]}
+    data = {
+        "segments": [
+            {"start": 0.37, "end": 1.5, "text": "x", "speaker": "SPEAKER_00"},
+            {"start": 5.0, "end": 8.0, "text": "y", "speaker": "SPEAKER_01"},
+            {"start": 10.0, "end": 14.0, "text": "z", "speaker": "SPEAKER_00"},
+        ]
+    }
     updated, shifted, lines = retime_document(text, data, 1.597)
     assert lines == 3
-    assert "[00:02] Speaker A: первая реплика" in updated
-    assert "[01:01] Speaker B: вторая реплика" not in updated
-    assert "третья реплика, текст не трогаем" in updated
+    # Stamps come from the shifted segments (0.37+1.597=1.967 -> 00:01), not from
+    # adding the offset to the old display stamp.
+    assert "[00:01] Speaker A: первая реплика" in updated
+    assert "[00:06] Speaker B: вторая реплика" in updated
+    assert "[00:11] Speaker A: третья реплика, текст не трогаем" in updated
     assert shifted["segments"][0]["start"] == 1.967
 
     marked = with_offset_marker(updated, 1.597)
@@ -286,7 +294,12 @@ def test_retime_shifts_only_transcript_lines_and_records_offset() -> None:
 def test_retime_changes_only_timestamps_and_the_offset_line() -> None:
     from audio_transcribe.retime import retime_document, with_offset_marker
 
-    updated, _data, _lines = retime_document(NOTE, {"segments": [{"start": 1.0, "end": 2.0, "text": "x"}]}, 1.5)
+    segments = [
+        {"start": 1.0, "end": 2.0, "text": "x"},
+        {"start": 5.0, "end": 6.0, "text": "y"},
+        {"start": 10.0, "end": 11.0, "text": "z"},
+    ]
+    updated, _data, _lines = retime_document(NOTE, {"segments": segments}, 1.5)
     marked = with_offset_marker(updated, 1.5)
     old_lines = NOTE.splitlines()
     new_lines = [line for line in marked.splitlines() if not line.startswith("timing_offset_s:")]
