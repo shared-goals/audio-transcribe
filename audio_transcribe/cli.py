@@ -709,6 +709,66 @@ def attribute(
     typer.echo(f"Версия {version.version}: {version.operations[0]['segments']} реплик, лог {path}")
 
 
+@app.command()
+def retime(
+    meeting: Path = typer.Argument(..., help="Meeting note whose timings must be restored"),
+    audio_file: Optional[Path] = typer.Option(None, "--audio-file", help="Override the source recording"),
+    force: bool = typer.Option(False, "--force", help="Shift again if the note already carries an offset"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Measure and report without writing"),
+) -> None:
+    """Add the removed leading silence back to an existing note's timestamps."""
+    import json
+    import tempfile
+
+    from audio_transcribe.markdown.parser import parse_meeting
+    from audio_transcribe.markdown.updater import set_frontmatter
+    from audio_transcribe.retime import current_offset, retime_document
+    from audio_transcribe.stages.loader import load_audio_data
+    from audio_transcribe.stages.preprocess import leading_trim_offset, preprocess
+    from audio_transcribe.util import atomic_write_text
+
+    text = meeting.read_text(encoding="utf-8")
+    doc = parse_meeting(text)
+    data = load_audio_data(meeting, doc)
+    source = str(audio_file or doc.frontmatter.get("audio_file", ""))
+    if not source:
+        typer.echo("Не указан исходный файл: нет audio_file в заметке", err=True)
+        raise typer.Exit(2)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        trimmed = str(Path(tmp) / "trimmed.wav")
+        try:
+            preprocess(source, trimmed)
+        except (RuntimeError, FileNotFoundError) as exc:
+            typer.echo(f"Не удалось измерить сдвиг: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        measured = leading_trim_offset(source, trimmed)
+
+    already = current_offset(text)
+    delta = measured - already
+    typer.echo(f"Сдвиг по исходнику: {measured:.3f} с; уже учтено: {already:.3f} с")
+    if measured <= 0.05:
+        typer.echo("Ведущая тишина не удалялась — править нечего.")
+        return
+    if delta <= 0.05:
+        typer.echo("Заметка уже сдвинута на эту величину — повторный сдвиг не нужен.")
+        return
+    if already > 0 and not force:
+        typer.echo("В заметке уже есть timing_offset_s; для повторного сдвига нужен --force", err=True)
+        raise typer.Exit(1)
+
+    updated, shifted, lines = retime_document(text, data, delta)
+    updated = set_frontmatter(parse_meeting(updated), "timing_offset_s", round(already + delta, 3)).to_markdown()
+    typer.echo(f"Реплик переставлено: {lines}; сдвиг {delta:.3f} с")
+    if dry_run:
+        typer.echo("--dry-run: файлы не изменены")
+        return
+    audio_data = meeting.parent / str(doc.frontmatter.get("audio_data", ""))
+    atomic_write_text(audio_data, json.dumps(shifted, ensure_ascii=False, indent=2))
+    atomic_write_text(meeting, updated)
+    typer.echo(f"Обновлено: {meeting} и {audio_data}")
+
+
 @app.command("self-update")
 def self_update() -> None:
     """Force an immediate upgrade to the latest version."""

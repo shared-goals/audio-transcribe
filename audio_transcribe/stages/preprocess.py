@@ -10,6 +10,29 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def probe_duration(path: str) -> float:
+    """Container duration in seconds; 0.0 when ffprobe cannot tell."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        return max(0.0, float(result.stdout.strip()))
+    except (subprocess.SubprocessError, ValueError, OSError):
+        return 0.0
+
+
+def leading_trim_offset(input_path: str, clean_path: str) -> float:
+    """Seconds removed from the start, so callers can restore absolute times."""
+    original = probe_duration(input_path)
+    trimmed = probe_duration(clean_path)
+    if original <= 0 or trimmed <= 0:
+        return 0.0
+    return max(0.0, original - trimmed)
+
+
 def preprocess(
     input_path: str,
     output_path: str | None = None,

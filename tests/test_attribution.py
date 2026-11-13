@@ -241,3 +241,43 @@ def test_audio_data_override_is_used(tmp_path: Path) -> None:
 
     apply_correction(note, Scope("cluster"), "SPEAKER_00", label="Speaker C", author="anton", audio_data=cache)
     assert "Speaker C" in note.read_text(encoding="utf-8")
+
+
+def test_shift_timings_moves_segments_and_words() -> None:
+    from audio_transcribe.stages.timing import shift_timings
+
+    result = {
+        "segments": [
+            {"start": 0.37, "end": 1.5, "text": "x", "words": [{"word": "x", "start": 0.37, "end": 0.9}]},
+            {"start": 4.0, "end": 5.0, "text": "y"},
+        ]
+    }
+    shifted = shift_timings(result, 1.597)
+    assert shifted["segments"][0]["start"] == 1.967
+    assert shifted["segments"][0]["words"][0]["end"] == 2.497
+    assert shifted["segments"][1]["start"] == 5.597
+    assert result["segments"][0]["start"] == 0.37, "input must not be mutated"
+
+    from audio_transcribe.stages.timing import format_stamp, parse_stamp
+
+    assert parse_stamp("01:02") == 62
+    assert parse_stamp("1:00:01") == 3601
+    assert format_stamp(62) == "01:02"
+    assert format_stamp(3601) == "1:00:01"
+
+
+def test_retime_shifts_only_transcript_lines_and_records_offset() -> None:
+    from audio_transcribe.retime import current_offset, retime_document, with_offset_marker
+
+    text = NOTE
+    data = {"segments": [{"start": 0.37, "end": 1.5, "text": "x", "speaker": "SPEAKER_00"}]}
+    updated, shifted, lines = retime_document(text, data, 1.597)
+    assert lines == 3
+    assert "[00:02] Speaker A: первая реплика" in updated
+    assert "[01:01] Speaker B: вторая реплика" not in updated
+    assert "третья реплика, текст не трогаем" in updated
+    assert shifted["segments"][0]["start"] == 1.967
+
+    marked = with_offset_marker(updated, 1.597)
+    assert "timing_offset_s: 1.597" in marked
+    assert current_offset(marked) == 1.597

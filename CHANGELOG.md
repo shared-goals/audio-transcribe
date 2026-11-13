@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-13
+
+### Fixed
+- Timestamps now refer to the original recording: preprocessing trims leading silence, but the removed lead
+  (measured from both durations) is added back to every segment and word before the note is written. Before this,
+  transcripts were early by ~1.6 s on the checked recording, so the first replies played silence or the wrong speech
+
+### Added
+- `retime <note>` restores absolute timings in an existing note and its `.audio-data` JSON: it measures the removed
+  lead again, rewrites only timestamps (text and speaker labels untouched) and records `timing_offset_s`, so a second
+  run cannot shift the note twice. `--dry-run` reports without writing
+
 ## [0.8.0] - 2026-11-13
 
 ### Added
