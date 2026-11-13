@@ -281,3 +281,17 @@ def test_retime_shifts_only_transcript_lines_and_records_offset() -> None:
     marked = with_offset_marker(updated, 1.597)
     assert "timing_offset_s: 1.597" in marked
     assert current_offset(marked) == 1.597
+
+
+def test_retime_changes_only_timestamps_and_the_offset_line() -> None:
+    from audio_transcribe.retime import retime_document, with_offset_marker
+
+    updated, _data, _lines = retime_document(NOTE, {"segments": [{"start": 1.0, "end": 2.0, "text": "x"}]}, 1.5)
+    marked = with_offset_marker(updated, 1.5)
+    old_lines = NOTE.splitlines()
+    new_lines = [line for line in marked.splitlines() if not line.startswith("timing_offset_s:")]
+    assert len(old_lines) == len(new_lines)
+    changed = [(a, b) for a, b in zip(old_lines, new_lines, strict=True) if a != b]
+    for old, new in changed:
+        assert old.startswith("[") and new.startswith("["), (old, new)
+    assert marked.count("timing_offset_s: 1.5") == 1

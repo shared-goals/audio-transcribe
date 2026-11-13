@@ -721,8 +721,7 @@ def retime(
     import tempfile
 
     from audio_transcribe.markdown.parser import parse_meeting
-    from audio_transcribe.markdown.updater import set_frontmatter
-    from audio_transcribe.retime import current_offset, retime_document
+    from audio_transcribe.retime import current_offset, retime_document, with_offset_marker
     from audio_transcribe.stages.loader import load_audio_data
     from audio_transcribe.stages.preprocess import leading_trim_offset, preprocess
     from audio_transcribe.util import atomic_write_text
@@ -758,7 +757,9 @@ def retime(
         raise typer.Exit(1)
 
     updated, shifted, lines = retime_document(text, data, delta)
-    updated = set_frontmatter(parse_meeting(updated), "timing_offset_s", round(already + delta, 3)).to_markdown()
+    # Textual marker update: the note is not re-rendered, so nothing but the
+    # timestamps and this one frontmatter line changes.
+    updated = with_offset_marker(updated, delta)
     typer.echo(f"Реплик переставлено: {lines}; сдвиг {delta:.3f} с")
     if dry_run:
         typer.echo("--dry-run: файлы не изменены")

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-13
+
+### Fixed
+- `retime` no longer re-renders the note: the offset is inserted textually and only `[MM:SS]` stamps change, so the
+  diff is the timestamps plus one frontmatter line instead of reformatted sections and spacing
+
 ## [0.9.0] - 2026-11-13
 
 ### Fixed
