@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-13
+
+### Added
+- Cluster hygiene after diarization: a cluster shorter than 30 s or holding under 2 % of the speech is not a speaker;
+  its segments move to the temporally nearest labelled cluster and the merge is logged. On the checked 46-minute call
+  this removes the 8-second `SPEAKER_02` artefact
+- `diarization` block in the result JSON: per-cluster seconds and share, `UNKNOWN` seconds and share, and warnings for
+  a cluster shorter than 30 s, an `UNKNOWN` share above 5 % and a cluster count that differs from the expected one.
+  Warnings are also written to the log, so oversplit is visible without listening
+
+### Checks
+- 471 tests, `ruff` and `mypy` clean; measured on two real artifacts: a clean 9-minute two-person call (2 clusters,
+  0 % UNKNOWN, no warnings) and the 46-minute call (4 clusters → 3 after hygiene, `SPEAKER_02` 7.9 s merged)
+
 ## [0.10.2] - 2026-11-13
 
 ### Fixed
