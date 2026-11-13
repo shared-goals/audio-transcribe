@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-11-13
+
+### Fixed
+- `retime` recomputes every stamp from the shifted segments instead of adding the offset to the already floored
+  `MM:SS`, so a line at 45.04 s prints `00:45` (before: `00:44`, one second early on shifted notes). Line count and
+  segment count must match, otherwise the note is left untouched with a clear message
+- `retime --restamp` rewrites display stamps from the artifact without changing the offset, for notes already shifted
+  with the off-by-one stamps
+
 ## [0.10.1] - 2026-11-13
 
 ### Fixed
