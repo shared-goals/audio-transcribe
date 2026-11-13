@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-11-13
+
+### Added
+- `diarize --speakers N` re-diarizes an existing note with an exact speaker count instead of the `min/max` range, for
+  the long-recording experiment without re-transcribing the audio
+
 ## [0.12.1] - 2026-11-13
 
 ### Tests
