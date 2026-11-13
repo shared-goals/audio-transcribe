@@ -34,10 +34,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Notes come from CHANGELOG.md; docs/releases/<tag>.md stays optional.
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ ! -f "$notes" ]; then
+            python3 scripts/changelog_section.py "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+            notes="$RUNNER_TEMP/notes.md"
+          fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/* --clobber
           else
             gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
-              --notes-file "docs/releases/${GITHUB_REF_NAME}.md" \
+              --notes-file "$notes" \
               --title "audio-transcribe $GITHUB_REF_NAME"
           fi
