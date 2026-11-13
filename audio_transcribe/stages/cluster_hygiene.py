@@ -65,7 +65,9 @@ def merge_small_clusters(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Move tiny clusters to their nearest neighbour; return (segments, merged)."""
     small = set(small_clusters(segments, min_seconds, min_share))
-    if not small:
+    labelled = {speaker for speaker in cluster_seconds(segments) if speaker != UNKNOWN}
+    if not small or not labelled or small >= labelled:
+        # A short call has two short clusters; wiping them all would leave no label at all.
         return segments, []
     merged: dict[str, dict[str, Any]] = {}
     result: list[dict[str, Any]] = []

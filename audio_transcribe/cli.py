@@ -404,6 +404,7 @@ def diarize(
             force=force,
             audio_file_override=audio_file,
             num_speakers=speakers,
+            expected_speakers=expected_speakers,
         )
         typer.echo(f"Diarized: {meeting} (reanalyze: true)")
     except RuntimeError as e:

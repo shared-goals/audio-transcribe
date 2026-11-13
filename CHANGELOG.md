@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-13
+
+### Fixed
+- `diarize --speakers N` accepted the flag but never passed the exact speaker count to pyannote, so the run silently used
+  the `min/max` range instead. Measured on the 46:49 two-person recording `2026-11-12_17-03-02_eirc-demo-plan`: the
+  ignored flag left four clusters (786 / 773 / 72 / 9 s), the same command with a working flag gives exactly two
+  (824 / 815 s, `UNKNOWN` 0 %) in 23 minutes without re-transcribing
+- Cluster hygiene no longer removes every label when all clusters are short (a short call has two clusters under the
+  30-second threshold); those segments keep their speakers instead of turning into `UNKNOWN`
+
+### Added
+- `diarize` now applies cluster hygiene and writes the `diarization` report block to the stored JSON like `process`
+  does, so a re-diarized note shows cluster seconds, shares, `UNKNOWN` share and warnings; `--expected-speakers` is
+  forwarded there as the weak prior it is
+
 ## [0.13.0] - 2026-11-13
 
 ### Added

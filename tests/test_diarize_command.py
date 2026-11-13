@@ -236,3 +236,93 @@ def test_diarize_timestamp_collision(tmp_path):
     result = meeting_md.read_text()
     assert "Speaker A: First utterance" in result
     assert "Speaker B: Second utterance" in result
+
+
+def test_diarize_forwards_exact_speaker_count(tmp_path):
+    """`diarize --speakers N` must reach the diarization stage, not fall back to the range."""
+    meeting_md = tmp_path / "meeting.md"
+    meeting_md.write_text(
+        textwrap.dedent("""\
+        ---
+        title: test
+        audio_file: meeting.wav
+        audio_data: .audio-data/meeting.json
+        ---
+
+        ## Transcript
+
+        [00:00] Первый
+        [03:20] Второй
+        """)
+    )
+    stored = {
+        "audio_file": "meeting.wav",
+        "segments": [
+            {"start": 0.0, "end": 200.0, "text": "Первый"},
+            {"start": 200.0, "end": 350.0, "text": "Второй"},
+        ],
+    }
+    data_dir = tmp_path / ".audio-data"
+    data_dir.mkdir()
+    stored_path = data_dir / "meeting.json"
+    stored_path.write_text(json.dumps(stored))
+
+    diarized = [
+        {"start": 0.0, "end": 200.0, "text": "Первый", "speaker": "SPEAKER_00"},
+        {"start": 200.0, "end": 350.0, "text": "Второй", "speaker": "SPEAKER_01"},
+    ]
+
+    with patch("audio_transcribe.stages.diarize_update.run_diarization", return_value=diarized) as run:
+        diarize_and_update(meeting_md, force=True, num_speakers=2, expected_speakers=2)
+
+    assert run.call_args.kwargs["num_speakers"] == 2
+
+
+def test_diarize_writes_report_and_merges_a_tiny_cluster(tmp_path):
+    """A re-diarized note reports clusters like `process` does, artefact included."""
+    meeting_md = tmp_path / "meeting.md"
+    meeting_md.write_text(
+        textwrap.dedent("""\
+        ---
+        title: test
+        audio_file: meeting.wav
+        audio_data: .audio-data/meeting.json
+        ---
+
+        ## Transcript
+
+        [00:00] Первый
+        [03:20] Второй
+        [05:50] Фрагмент
+        """)
+    )
+    stored = {
+        "audio_file": "meeting.wav",
+        "segments": [
+            {"start": 0.0, "end": 200.0, "text": "Первый"},
+            {"start": 200.0, "end": 350.0, "text": "Второй"},
+            {"start": 350.0, "end": 358.0, "text": "Фрагмент"},
+        ],
+    }
+    data_dir = tmp_path / ".audio-data"
+    data_dir.mkdir()
+    stored_path = data_dir / "meeting.json"
+    stored_path.write_text(json.dumps(stored))
+
+    diarized = [
+        {"start": 0.0, "end": 200.0, "text": "Первый", "speaker": "SPEAKER_00"},
+        {"start": 200.0, "end": 350.0, "text": "Второй", "speaker": "SPEAKER_01"},
+        {"start": 350.0, "end": 358.0, "text": "Фрагмент", "speaker": "SPEAKER_02"},
+    ]
+
+    with patch("audio_transcribe.stages.diarize_update.run_diarization", return_value=diarized):
+        diarize_and_update(meeting_md, force=True, expected_speakers=2)
+
+    written = json.loads(stored_path.read_text())
+    report = written["diarization"]
+    assert [c["speaker"] for c in report["clusters"]] == ["SPEAKER_00", "SPEAKER_01"]
+    assert report["planned_speakers"] == 2
+    assert report["warnings"] == []
+    speakers = [s["speaker"] for s in written["segments"]]
+    assert speakers == ["SPEAKER_00", "SPEAKER_01", "SPEAKER_01"]
+    assert "SPEAKER_02" not in meeting_md.read_text()
