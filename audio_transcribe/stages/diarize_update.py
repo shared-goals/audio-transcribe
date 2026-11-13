@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -10,11 +11,14 @@ from typing import TYPE_CHECKING, Any
 from audio_transcribe.markdown.parser import parse_meeting
 from audio_transcribe.markdown.updater import extract_wiki_links, replace_section, set_frontmatter
 from audio_transcribe.speakers import embeddings as _embeddings
+from audio_transcribe.stages.cluster_hygiene import diarization_report, merge_small_clusters
 from audio_transcribe.stages.format import build_speaker_legend, format_time
 from audio_transcribe.stages.loader import load_audio_data
 
 if TYPE_CHECKING:
     from audio_transcribe.speakers.database import SpeakerDB
+
+logger = logging.getLogger(__name__)
 
 
 def run_diarization(
@@ -58,6 +62,7 @@ def diarize_and_update(
     audio_file_override: str | None = None,
     db: SpeakerDB | None = None,
     num_speakers: int | None = None,
+    expected_speakers: int | None = None,
 ) -> None:
     """Run diarization and update the meeting note in-place.
 
@@ -94,11 +99,27 @@ def diarize_and_update(
     )
     segments: list[dict[str, Any]] = stored.get("segments", [])
 
-    # Run diarization
-    diarized_segments = run_diarization(audio_file, segments, min_speakers, max_speakers)
+    # Run diarization. The exact count must reach pyannote here too, otherwise
+    # `diarize --speakers N` silently falls back to the min/max range.
+    diarized_segments = run_diarization(
+        audio_file, segments, min_speakers, max_speakers, num_speakers=num_speakers
+    )
+
+    # Same hygiene as the process pipeline: a cluster of a few seconds is not a speaker.
+    diarized_segments, merged_clusters = merge_small_clusters(diarized_segments)
+    if merged_clusters:
+        logger.info("Merged small diarization clusters: %s", merged_clusters)
+    report = diarization_report(
+        diarized_segments,
+        num_speakers or expected_speakers,
+        planned_speakers=expected_speakers,
+    )
+    for warning in report.get("warnings", []):
+        logger.warning("Diarization: %s", warning)
 
     # Update stored JSON
     stored["segments"] = diarized_segments
+    stored["diarization"] = report
     json_path.write_text(json.dumps(stored, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # Build speaker legend

@@ -30,6 +30,22 @@ def test_unknown_is_never_treated_as_a_small_cluster() -> None:
     assert merged == segments and changes == []
 
 
+def test_a_short_call_keeps_both_speaker_labels() -> None:
+    """Two clusters below the threshold in a short call must not collapse to UNKNOWN."""
+    segments = [seg(0, 20, "SPEAKER_00"), seg(20, 40, "SPEAKER_01")]
+    assert small_clusters(segments) == ["SPEAKER_00", "SPEAKER_01"]
+    merged, changes = merge_small_clusters(segments)
+    assert [s["speaker"] for s in merged] == ["SPEAKER_00", "SPEAKER_01"]
+    assert changes == []
+
+
+def test_one_small_cluster_still_merges_in_a_short_call() -> None:
+    segments = [seg(0, 60, "SPEAKER_00"), seg(60, 63, "SPEAKER_01")]
+    merged, changes = merge_small_clusters(segments)
+    assert [s["speaker"] for s in merged] == ["SPEAKER_00", "SPEAKER_00"]
+    assert changes == [{"from": "SPEAKER_01", "to": "SPEAKER_00", "segments": 1, "seconds": 3.0}]
+
+
 def test_report_warns_about_short_clusters_and_unknown_share() -> None:
     segments = [
         seg(0, 100, "SPEAKER_00"),
