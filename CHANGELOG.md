@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-13
+
+### Added
+- `process --speakers N` (and profile `num_speakers`) passes an exact speaker count to pyannote instead of the
+  `min/max` range. The hint wins over `--min-speakers/--max-speakers`; when it is absent the old range behaviour is
+  unchanged
+- The diarization report compares the resulting cluster count with the hint and warns on a mismatch, so a wrong hint
+  (guests, a shared room account, a silent participant) is visible instead of silently trusted
+
 ## [0.11.0] - 2026-11-13
 
 ### Added

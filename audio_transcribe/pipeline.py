@@ -71,12 +71,17 @@ def align_stage(result: dict[str, Any], audio: Any, language: str, align_model: 
 
 
 def diarize_stage(
-    result: dict[str, Any], audio: Any, hf_token: str, min_speakers: int, max_speakers: int
+    result: dict[str, Any],
+    audio: Any,
+    hf_token: str,
+    min_speakers: int,
+    max_speakers: int,
+    num_speakers: int | None = None,
 ) -> dict[str, Any]:
     """Run diarization stage."""
     from audio_transcribe.stages.diarize import diarize
 
-    return diarize(result, audio, hf_token, min_speakers, max_speakers)
+    return diarize(result, audio, hf_token, min_speakers, max_speakers, num_speakers)
 
 
 def _current_rss_mb() -> float:
@@ -122,6 +127,7 @@ class PipelineConfig:
     backend: str = "whisperx"
     min_speakers: int = 2
     max_speakers: int = 6
+    num_speakers: int | None = None
     align_model: str | None = None
     skip_align: bool = False
     skip_diarize: bool = False
@@ -279,7 +285,14 @@ class Pipeline:
                 else:
                     result = self._run_stage(
                         "diarize",
-                        lambda: diarize_stage(result, audio, hf_token, config.min_speakers, config.max_speakers),
+                        lambda: diarize_stage(
+                            result,
+                            audio,
+                            hf_token,
+                            config.min_speakers,
+                            config.max_speakers,
+                            config.num_speakers,
+                        ),
                     )
                     self._save_checkpoint("diarize", result)
             else:
@@ -293,7 +306,7 @@ class Pipeline:
         if merged_clusters:
             result["segments"] = segments
             logger.info("Merged small diarization clusters: %s", merged_clusters)
-        self._diarization_report = diarization_report(result.get("segments", []))
+        self._diarization_report = diarization_report(result.get("segments", []), config.num_speakers)
 
         # Stage 5: Corrections (optional)
         corrections_path = config.corrections_path or str(Path.home() / ".audio-transcribe" / "corrections.yaml")
@@ -451,6 +464,7 @@ def run_pipeline(
     backend: str = "whisperx",
     min_speakers: int = 2,
     max_speakers: int = 6,
+    num_speakers: int | None = None,
     align_model: str | None = None,
     no_align: bool = False,
     no_diarize: bool = False,
@@ -472,6 +486,7 @@ def run_pipeline(
         backend=backend,
         min_speakers=min_speakers,
         max_speakers=max_speakers,
+        num_speakers=num_speakers,
         align_model=align_model,
         skip_align=no_align,
         skip_diarize=no_diarize,

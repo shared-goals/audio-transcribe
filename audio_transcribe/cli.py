@@ -113,6 +113,9 @@ def process(
     ),
     min_speakers: Optional[int] = typer.Option(None, "--min-speakers", help="Minimum speakers for diarization"),
     max_speakers: Optional[int] = typer.Option(None, "--max-speakers", help="Maximum speakers for diarization"),
+    speakers: Optional[int] = typer.Option(
+        None, "--speakers", help="Exact number of speakers when known (calendar participants); overrides min/max"
+    ),
     align_model: Optional[str] = typer.Option(None, "--align-model", help="Custom alignment model HF repo"),
     no_align: bool = typer.Option(False, "--no-align", help="Skip alignment stage"),
     no_diarize: bool = typer.Option(False, "--no-diarize", help="Skip diarization stage"),
@@ -151,6 +154,7 @@ def process(
     backend = backend or selected.backend
     min_speakers = min_speakers if min_speakers is not None else selected.min_speakers
     max_speakers = max_speakers if max_speakers is not None else selected.max_speakers
+    num_speakers = speakers if speakers is not None else selected.num_speakers
     align_model = align_model or selected.align_model
     template = template or (Path(selected.template).expanduser() if selected.template else None)
 
@@ -167,6 +171,7 @@ def process(
         backend=backend,
         min_speakers=min_speakers,
         max_speakers=max_speakers,
+        num_speakers=num_speakers,
         align_model=align_model,
         no_align=no_align or selected.no_align,
         no_diarize=skip_diarize,
