@@ -295,3 +295,39 @@ def test_retime_changes_only_timestamps_and_the_offset_line() -> None:
     for old, new in changed:
         assert old.startswith("[") and new.startswith("["), (old, new)
     assert marked.count("timing_offset_s: 1.5") == 1
+
+
+def test_bulk_retime_skips_notes_that_are_already_shifted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from typer.testing import CliRunner
+
+    from audio_transcribe.cli import app
+    from audio_transcribe.stages import preprocess as preprocess_module
+
+    monkeypatch.setattr(preprocess_module, "preprocess", lambda *args, **kwargs: "/tmp/trimmed.wav")
+    monkeypatch.setattr(preprocess_module, "leading_trim_offset", lambda *args, **kwargs: 2.0)
+
+    meetings = tmp_path / "meetings"
+    meetings.mkdir()
+    audio = tmp_path / "a.mp3"
+    audio.write_bytes(b"\x00" * 16)
+    for name, offset in (("first", None), ("second", 2.0)):
+        note = meetings / f"{name}.md"
+        extra = "" if offset is None else f"timing_offset_s: {offset}\n"
+        note.write_text(
+            f"---\ntype: meeting\naudio_file: {audio}\naudio_data: .audio-data/{name}.json\n{extra}---\n\n"
+            "## Transcript\n\n[00:00] A: x\n",
+            encoding="utf-8",
+        )
+        data = meetings / ".audio-data" / f"{name}.json"
+        data.parent.mkdir(exist_ok=True)
+        payload: dict[str, object] = {"segments": [{"start": 0.0, "end": 1.0, "text": "x"}]}
+        if offset is not None:
+            payload["timing_offset_s"] = offset
+        data.write_text(json.dumps(payload), encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["retime", "--all", "--meetings-dir", str(meetings)])
+    assert result.exit_code == 0, result.output
+    assert "first.md: сдвинуто на 2.000" in result.output
+    assert "second.md: уже сдвинуто на 2.000" in result.output
+    assert "Изменено: 1" in result.output
