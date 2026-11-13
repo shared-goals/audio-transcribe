@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-13
+
+### Added
+- `--expected-speakers N` for `process` and `diarize`: the calendar's participant count is treated as a weak prior — it
+  never forces `num_speakers`, it only produces a review warning when the cluster count differs (guests joined, someone
+  did not come or stayed silent, clusters merged). `--speakers N` remains the explicit "I know exactly" option
+- `diarization.planned_speakers` in the result JSON, so a report shows what the plan was next to what was found
+
 ## [0.12.2] - 2026-11-13
 
 ### Added

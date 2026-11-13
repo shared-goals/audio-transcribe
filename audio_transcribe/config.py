@@ -27,6 +27,7 @@ class Profile:
     min_speakers: int = 2
     max_speakers: int = 6
     num_speakers: int | None = None
+    expected_speakers: int | None = None
     align_model: str | None = None
     no_align: bool = False
     no_diarize: bool = True
@@ -45,6 +46,8 @@ class Profile:
             raise ValueError("min_speakers must be at least 1")
         if self.num_speakers is not None and self.num_speakers < 1:
             raise ValueError("num_speakers must be at least 1")
+        if self.expected_speakers is not None and self.expected_speakers < 1:
+            raise ValueError("expected_speakers must be at least 1")
         if self.max_speakers < self.min_speakers:
             raise ValueError("max_speakers must be greater than or equal to min_speakers")
         return self

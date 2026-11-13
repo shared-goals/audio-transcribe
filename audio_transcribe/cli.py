@@ -114,7 +114,10 @@ def process(
     min_speakers: Optional[int] = typer.Option(None, "--min-speakers", help="Minimum speakers for diarization"),
     max_speakers: Optional[int] = typer.Option(None, "--max-speakers", help="Maximum speakers for diarization"),
     speakers: Optional[int] = typer.Option(
-        None, "--speakers", help="Exact number of speakers when known (calendar participants); overrides min/max"
+        None, "--speakers", help="Exact number of speakers when known; overrides min/max"
+    ),
+    expected_speakers: Optional[int] = typer.Option(
+        None, "--expected-speakers", help="Planned participant count; only warns on a mismatch, never forces it"
     ),
     align_model: Optional[str] = typer.Option(None, "--align-model", help="Custom alignment model HF repo"),
     no_align: bool = typer.Option(False, "--no-align", help="Skip alignment stage"),
@@ -155,6 +158,7 @@ def process(
     min_speakers = min_speakers if min_speakers is not None else selected.min_speakers
     max_speakers = max_speakers if max_speakers is not None else selected.max_speakers
     num_speakers = speakers if speakers is not None else selected.num_speakers
+    planned_speakers = expected_speakers if expected_speakers is not None else selected.expected_speakers
     align_model = align_model or selected.align_model
     template = template or (Path(selected.template).expanduser() if selected.template else None)
 
@@ -172,6 +176,7 @@ def process(
         min_speakers=min_speakers,
         max_speakers=max_speakers,
         num_speakers=num_speakers,
+        expected_speakers=planned_speakers,
         align_model=align_model,
         no_align=no_align or selected.no_align,
         no_diarize=skip_diarize,
@@ -379,6 +384,9 @@ def diarize(
     audio_file: Optional[str] = typer.Option(None, "--audio-file", help="Override audio file path"),
     speakers: Optional[int] = typer.Option(
         None, "--speakers", help="Exact number of speakers when known; overrides min/max"
+    ),
+    expected_speakers: Optional[int] = typer.Option(
+        None, "--expected-speakers", help="Planned participant count; only recorded for review"
     ),
 ) -> None:
     """Add speaker diarization to an existing meeting note."""

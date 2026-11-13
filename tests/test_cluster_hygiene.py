@@ -49,3 +49,15 @@ def test_report_is_quiet_for_a_clean_two_speaker_call() -> None:
     report = diarization_report(segments, expected_speakers=2)
     assert report["warnings"] == []
     assert report["unknown_share"] < 0.01
+
+
+def test_planned_count_is_a_weak_prior_not_an_exact_expectation() -> None:
+    segments = [seg(0, 100, "SPEAKER_00"), seg(100, 200, "SPEAKER_01"), seg(200, 260, "SPEAKER_02")]
+    # Planned 2, actual 3 (a guest joined): warn, do not claim a mismatch with a forced count.
+    report = diarization_report(segments, planned_speakers=2)
+    assert report["planned_speakers"] == 2
+    assert any("по приглашению 2" in warning for warning in report["warnings"])
+
+    # Fewer speakers than planned: warn too, because merged clusters look the same as a silent invitee.
+    quiet = diarization_report([seg(0, 100, "SPEAKER_00")], planned_speakers=2)
+    assert any("кто-то молчал" in warning for warning in quiet["warnings"])
