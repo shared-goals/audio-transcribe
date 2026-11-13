@@ -149,6 +149,25 @@ def test_hand_edited_line_aborts_without_writing(meeting: Path) -> None:
     assert not log_path(meeting).exists()
 
 
+def test_single_segment_edit_replaces_a_line_labelled_by_hand(meeting: Path) -> None:
+    edited = NOTE.replace(
+        "[00:05] Speaker B: вторая реплика",
+        "[00:05] [[actors/kto-to|Кто-то]]: вторая реплика",
+    )
+    meeting.write_text(edited, encoding="utf-8")
+    version = apply_correction(
+        meeting,
+        Scope("segment", index=1),
+        "SPEAKER_01",
+        label="[[actors/drugoi|Другой]]",
+        author="anton",
+    )
+    text = meeting.read_text(encoding="utf-8")
+    assert "[00:05] [[actors/drugoi|Другой]]: вторая реплика" in text
+    assert "[00:01] Speaker A: первая реплика" in text
+    assert version.operations[0]["segments"] == 1
+
+
 def test_unknown_speaker_is_refused(meeting: Path) -> None:
     with pytest.raises(AttributionError, match="отсутствует в транскрипте"):
         apply_correction(meeting, Scope("cluster"), "SPEAKER_09", label="X", author="anton")

@@ -183,18 +183,29 @@ def plan_correction(
         segment = segments[index]
         stamp = format_time(float(segment["start"]))
         original = old_label if target_id == speaker_id else rendered_label(str(segment.get("speaker")), speakers)
-        match_index = next(
-            (
-                n
-                for n, line in enumerate(lines)
-                if n not in used and (m := _LINE_RE.match(line)) and m.group(1) == stamp and m.group(2) == original
-            ),
-            None,
-        )
+        candidates = [
+            n
+            for n, line in enumerate(lines)
+            if n not in used and (m := _LINE_RE.match(line)) and m.group(1) == stamp
+        ]
+        exact = [n for n in candidates if (m := _LINE_RE.match(lines[n])) and m.group(2) == original]
+        if exact:
+            match_index: int | None = exact[0]
+        elif scope.kind != "cluster" and len(candidates) == 1:
+            # One line, one stamp: a label already changed by hand is still that line,
+            # and a single-segment edit names exactly what it wants to replace.
+            match_index = candidates[0]
+        else:
+            match_index = None
         if match_index is None:
+            hint = (
+                "; кластер целиком перезаписал бы ручные подписи — правьте одну реплику или отрезок"
+                if scope.kind == "cluster"
+                else ""
+            )
             raise AttributionError(
                 f"не найдена строка транскрипта для реплики {stamp} с меткой «{original}»; "
-                "заметка правилась вручную — правка отменена"
+                f"заметка правилась вручную — правка отменена{hint}"
             )
         used.add(match_index)
         match = _LINE_RE.match(lines[match_index])
