@@ -128,6 +128,7 @@ class PipelineConfig:
     min_speakers: int = 2
     max_speakers: int = 6
     num_speakers: int | None = None
+    expected_speakers: int | None = None
     align_model: str | None = None
     skip_align: bool = False
     skip_diarize: bool = False
@@ -306,7 +307,11 @@ class Pipeline:
         if merged_clusters:
             result["segments"] = segments
             logger.info("Merged small diarization clusters: %s", merged_clusters)
-        self._diarization_report = diarization_report(result.get("segments", []), config.num_speakers)
+        self._diarization_report = diarization_report(
+            result.get("segments", []),
+            config.num_speakers or config.expected_speakers,
+            planned_speakers=config.expected_speakers,
+        )
 
         # Stage 5: Corrections (optional)
         corrections_path = config.corrections_path or str(Path.home() / ".audio-transcribe" / "corrections.yaml")
@@ -465,6 +470,7 @@ def run_pipeline(
     min_speakers: int = 2,
     max_speakers: int = 6,
     num_speakers: int | None = None,
+    expected_speakers: int | None = None,
     align_model: str | None = None,
     no_align: bool = False,
     no_diarize: bool = False,
@@ -487,6 +493,7 @@ def run_pipeline(
         min_speakers=min_speakers,
         max_speakers=max_speakers,
         num_speakers=num_speakers,
+        expected_speakers=expected_speakers,
         align_model=align_model,
         skip_align=no_align,
         skip_diarize=no_diarize,

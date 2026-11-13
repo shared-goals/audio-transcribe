@@ -82,7 +82,11 @@ def merge_small_clusters(
     return result, sorted(merged.values(), key=lambda entry: entry["from"])
 
 
-def diarization_report(segments: list[dict[str, Any]], expected_speakers: int | None = None) -> dict[str, Any]:
+def diarization_report(
+    segments: list[dict[str, Any]],
+    expected_speakers: int | None = None,
+    planned_speakers: int | None = None,
+) -> dict[str, Any]:
     totals = cluster_seconds(segments)
     total = sum(totals.values())
     labelled = {speaker: seconds for speaker, seconds in totals.items() if speaker != UNKNOWN}
@@ -90,6 +94,10 @@ def diarization_report(segments: list[dict[str, Any]], expected_speakers: int | 
     warnings: list[str] = []
     if expected_speakers is not None and len(labelled) != expected_speakers:
         warnings.append(f"кластеров {len(labelled)}, ожидалось {expected_speakers}")
+    if planned_speakers is not None and expected_speakers is None and len(labelled) != planned_speakers:
+        # A calendar plan is a weak prior: invitees may be absent, guests may join.
+        hint = "гости или дробление" if len(labelled) > planned_speakers else "кто-то молчал или кластеры склеены"
+        warnings.append(f"кластеров {len(labelled)}, по приглашению {planned_speakers} — возможно, {hint}")
     for speaker, seconds in sorted(labelled.items()):
         if seconds < MIN_CLUSTER_SECONDS:
             warnings.append(f"{speaker}: {seconds:.0f} с — короче {MIN_CLUSTER_SECONDS:.0f} с")
@@ -102,5 +110,6 @@ def diarization_report(segments: list[dict[str, Any]], expected_speakers: int | 
         ],
         "unknown_seconds": round(totals.get(UNKNOWN, 0.0), 1),
         "unknown_share": round(unknown_share, 3),
+        "planned_speakers": planned_speakers,
         "warnings": warnings,
     }
