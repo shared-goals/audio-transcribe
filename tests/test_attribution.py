@@ -140,10 +140,19 @@ def test_second_correction_keeps_previous_version(meeting: Path) -> None:
     assert "[00:05] Speaker D: вторая реплика" in text
 
 
-def test_hand_edited_line_aborts_without_writing(meeting: Path) -> None:
+def test_cluster_rename_replaces_a_line_labelled_by_hand(meeting: Path) -> None:
     edited = NOTE.replace("[00:05] Speaker B: вторая реплика", "[00:05] Кто-то: вторая реплика")
     meeting.write_text(edited, encoding="utf-8")
-    with pytest.raises(AttributionError, match="не найдена строка"):
+    version = apply_correction(meeting, Scope("cluster"), "SPEAKER_01", label="Speaker D", author="anton")
+    text = meeting.read_text(encoding="utf-8")
+    assert "[00:05] Speaker D: вторая реплика" in text
+    assert version.operations[0]["relabelled_lines"] == 1
+
+
+def test_missing_transcript_line_aborts_without_writing(meeting: Path) -> None:
+    edited = NOTE.replace("[00:05] Speaker B: вторая реплика\n", "")
+    meeting.write_text(edited, encoding="utf-8")
+    with pytest.raises(AttributionError, match="разошлись"):
         apply_correction(meeting, Scope("cluster"), "SPEAKER_01", label="Speaker D", author="anton")
     assert meeting.read_text(encoding="utf-8") == edited
     assert not log_path(meeting).exists()
