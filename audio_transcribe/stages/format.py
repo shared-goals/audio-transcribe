@@ -56,7 +56,8 @@ def format_segment(segment: dict[str, Any], legend: dict[str, str] | None = None
     else:
         speaker = speaker_id
 
-    return f"[{format_time(float(start))}] {speaker}: {text}"
+    prefix = f"[{format_time(float(start))}] {speaker}:"
+    return f"{prefix} {text}" if text else prefix
 
 
 def compute_duration(segments: list[dict[str, Any]]) -> float:

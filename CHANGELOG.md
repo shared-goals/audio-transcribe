@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. Format foll
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-13
+
+### Fixed
+- Empty transcript segments are written as `[MM:SS] Speaker:` without a trailing space, and `retime` strips trailing
+  whitespace from the lines it rewrites; generated notes no longer fail `git diff --check`
+
 ## [0.10.0] - 2026-11-13
 
 ### Added
